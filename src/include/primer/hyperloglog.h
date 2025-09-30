@@ -79,10 +79,14 @@ class HyperLogLog {
    */
   auto PositionOfLeftmostOne(const std::bitset<BITSET_CAPACITY> &bset) const -> uint64_t;
 
+  // 辅助函数
+  auto CutPreIndexes(const std::bitset<BITSET_CAPACITY> &bset) const -> uint64_t;
   /** @brief Cardinality value. */
   size_t cardinality_;
 
   /** @todo (student) can add their data structures that support HyperLogLog */
+  std::vector<uint64_t> registers_;  // 记录register
+  int16_t b_;                        // 记录取前b位
 };
 
 }  // namespace bustub
