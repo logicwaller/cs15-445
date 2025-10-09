@@ -62,7 +62,7 @@ auto HyperLogLogPresto<KeyType>::PositionOfRightmostOne(const std::bitset<K_BITS
     if (bset[res]) {
       break;
     }
-  };
+  }
   return res;
 }
 

@@ -75,7 +75,7 @@ endif()
 
 # attempt to find the binary if user did not specify
 find_program(CLANG_TIDY_BIN
-        NAMES clang-tidy clang-tidy-14
+        NAMES clang-tidy-14 clang-tidy
         HINTS ${BUSTUB_CLANG_SEARCH_PATH})
 
 if("${CLANG_TIDY_BIN}" STREQUAL "CLANG_TIDY_BIN-NOTFOUND")
