@@ -23,6 +23,7 @@ Checks:     '
             clang-analyzer-*,
             google-*,
             modernize-*,
+            -modernize-macro-to-enum,   #禁用define宏检查 
             performance-*,
             portability-*,
             readability-*,
