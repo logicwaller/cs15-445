@@ -1,3 +1,11 @@
+为了强制使用clang-14,请使用以下命令进行编译
+```console
+$ cmake -DCMAKE_BUILD_TYPE=Debug \
+      -DBUSTUB_SANITIZER= \
+      -DCMAKE_C_COMPILER=clang-14 \
+      -DCMAKE_CXX_COMPILER=clang++-14 ..
+```
+-----------------
 <img src="logo/bustub-whiteborder.svg" alt="BusTub Logo" height="200">
 
 -----------------
