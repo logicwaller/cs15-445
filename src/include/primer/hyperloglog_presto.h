@@ -73,9 +73,9 @@ class HyperLogLogPresto {
     return 0;
   }
 
-  static constexpr int kBITSET_CAPACITY = 64;  // 标记bitset大小
-  auto PositionOfRightmostOne(const std::bitset<kBITSET_CAPACITY> &bset) const -> uint64_t;
-  auto CountRmost(const uint16_t position) const -> uint64_t;
+  static constexpr int K_BITSET_CAPACITY = 64;  // 标记bitset大小
+  auto PositionOfRightmostOne(const std::bitset<K_BITSET_CAPACITY> &bset) const -> uint64_t;
+  auto CountRmost(uint16_t position) const -> uint64_t;
 
   /** @brief Structure holding dense buckets (or also known as registers). */
   std::vector<std::bitset<DENSE_BUCKET_SIZE>> dense_bucket_;

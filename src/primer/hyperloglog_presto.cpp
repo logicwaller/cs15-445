@@ -17,7 +17,7 @@ auto HyperLogLogPresto<KeyType>::AddElem(KeyType val) -> void {
   }
   // 转换为hash后获取bset
   hash_t hash = CalculateHash(val);
-  std::bitset<kBITSET_CAPACITY> bset(hash);
+  std::bitset<K_BITSET_CAPACITY> bset(hash);
   // 获取position
   uint16_t position = (bset >> (64 - b_)).to_ulong();
   // 获取最右边最长0串长度
@@ -56,10 +56,10 @@ auto HyperLogLogPresto<T>::ComputeCardinality() -> void {
  * @returns 末尾0长度的数
  */
 template <typename KeyType>
-auto HyperLogLogPresto<KeyType>::PositionOfRightmostOne(const std::bitset<kBITSET_CAPACITY> &bset) const -> uint64_t {
+auto HyperLogLogPresto<KeyType>::PositionOfRightmostOne(const std::bitset<K_BITSET_CAPACITY> &bset) const -> uint64_t {
   uint64_t res;
-  for (res = 0; res < static_cast<uint64_t>(kBITSET_CAPACITY - b_); res++) {  // res从倒数b_位开始找1
-    if (bset[res] == true) {
+  for (res = 0; res < static_cast<uint64_t>(K_BITSET_CAPACITY - b_); res++) {  // res从倒数b_位开始找1
+    if (bset[res]) {
       break;
     }
   };

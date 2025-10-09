@@ -21,7 +21,7 @@ auto HyperLogLog<KeyType>::PositionOfLeftmostOne(const std::bitset<BITSET_CAPACI
   uint64_t res;
   uint64_t bsize = bset.size();
   for (res = b_; res < bsize; res++) {  // res从倒数b_位开始找1
-    if (bset[bsize - 1 - res] == true) {
+    if (bset[bsize - 1 - res]) {
       break;
     }
   }
