@@ -27,14 +27,21 @@ namespace bustub {
 enum class AccessType { Unknown = 0, Lookup, Scan, Index };
 
 class LRUKNode {
- private:
+ public:  // 这里由private改为public
   /** History of last seen K timestamps of this page. Least recent timestamp stored in front. */
   // Remove maybe_unused if you start using them. Feel free to change the member variables as you want.
 
-  [[maybe_unused]] std::list<size_t> history_;
+  std::list<size_t> history_;  // 最早访问在开头，最近访问在结尾
   [[maybe_unused]] size_t k_;
-  [[maybe_unused]] frame_id_t fid_;
-  [[maybe_unused]] bool is_evictable_{false};
+  frame_id_t fid_;
+  bool is_evictable_{false};
+
+  // 初始化
+  explicit LRUKNode(std::list<size_t> history, frame_id_t fid, bool is_evict) {
+    history_ = history;
+    fid_ = fid;
+    is_evictable_ = is_evict;
+  }
 };
 
 /**
@@ -150,12 +157,22 @@ class LRUKReplacer {
 
  private:
   // TODO(student): implement me! You can replace these member variables as you like.
+
+  /**
+   * @brief 返回LRUKNode的倒数第k次时间，若访问次数小于k返回inf
+   *
+   * @param node 待解析的node
+   *
+   * @return size_t
+   */
+  auto GetNodeKTime(LRUKNode node) -> size_t;
+
   // Remove maybe_unused if you start using them.
-  [[maybe_unused]] std::unordered_map<frame_id_t, LRUKNode> node_store_;
-  [[maybe_unused]] size_t current_timestamp_{0};
-  [[maybe_unused]] size_t curr_size_{0};
-  [[maybe_unused]] size_t replacer_size_;
-  [[maybe_unused]] size_t k_;
+  std::unordered_map<frame_id_t, LRUKNode> node_store_;
+  size_t current_timestamp_{0};
+  size_t curr_size_{0};
+  size_t replacer_size_;
+  size_t k_;
   [[maybe_unused]] std::mutex latch_;
 };
 
