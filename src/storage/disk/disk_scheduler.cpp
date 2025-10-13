@@ -37,7 +37,7 @@ void DiskScheduler::Schedule(DiskRequest r) {
 }
 
 void DiskScheduler::StartWorkerThread() {
-  while (true) {  // TODO:什么时候停止
+  while (true) {
     std::optional<DiskRequest> request = request_queue_.Get();
     // 当读取值为空时结束进程
     if (!request.has_value()) return;
