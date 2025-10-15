@@ -60,6 +60,7 @@ class FrameHeader {
   friend class BufferPoolManager;
   friend class ReadPageGuard;
   friend class WritePageGuard;
+  friend class IOPageGuard;
 
  public:
   explicit FrameHeader(frame_id_t frame_id);
@@ -95,6 +96,9 @@ class FrameHeader {
    * currently storing. This might allow you to skip searching for the corresponding (page ID, frame ID) pair somewhere
    * else in the buffer pool manager...
    */
+
+  /** 记录page_id */
+  std::optional<page_id_t> page_id_;
 };
 
 /**
@@ -170,5 +174,7 @@ class BufferPoolManager {
    * stored inside of it. Additionally, you may also want to implement a helper function that returns either a shared
    * pointer to a `FrameHeader` that already has a page's data stored inside of it, or an index to said `FrameHeader`.
    */
+  auto GetAvailableFrame(page_id_t page_id) -> std::optional<frame_id_t>;
+  auto BringPageToFrame(page_id_t page_id, frame_id_t frame_id, AccessType access_type) -> void;
 };
 }  // namespace bustub

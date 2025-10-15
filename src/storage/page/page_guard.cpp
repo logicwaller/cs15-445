@@ -14,6 +14,65 @@
 
 namespace bustub {
 
+/** write和read一样的函数用父类实现 */
+
+IOPageGuard::IOPageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> frame, std::shared_ptr<LRUKReplacer> replacer,
+                         std::shared_ptr<std::mutex> bpm_latch)
+    : page_id_(page_id), frame_(std::move(frame)), replacer_(std::move(replacer)), bpm_latch_(std::move(bpm_latch)) {
+  // 初始化后is_valid设为true
+  is_valid_ = true;
+}
+
+IOPageGuard::IOPageGuard(IOPageGuard &&that) noexcept {
+  // 复制that的内容
+  page_id_ = that.page_id_;
+  frame_ = std::move(that.frame_);
+  replacer_ = std::move(that.replacer_);
+  bpm_latch_ = std::move(that.bpm_latch_);
+  is_valid_ = true;
+  // 重设that的内容，防止double free
+  that.frame_ = nullptr;
+  that.replacer_ = nullptr;
+  that.bpm_latch_ = nullptr;
+  that.is_valid_ = false;
+}
+
+auto IOPageGuard::operator=(IOPageGuard &&that) noexcept -> IOPageGuard & {
+  // free this原本内容
+  if (this != &that) {
+    this->Drop();
+    // 复制that的内容
+    page_id_ = that.page_id_;
+    frame_ = std::move(that.frame_);
+    replacer_ = std::move(that.replacer_);
+    bpm_latch_ = std::move(that.bpm_latch_);
+    is_valid_ = true;
+    // 重设that的内容，防止double free
+    that.frame_ = nullptr;
+    that.replacer_ = nullptr;
+    that.bpm_latch_ = nullptr;
+    that.is_valid_ = false;
+  }
+  return *this;
+}
+
+void IOPageGuard::Drop() {
+  if (is_valid_) {  // 只有vaild时会执行
+    // 更新replacer_
+    replacer_->SetEvictable(frame_->frame_id_, true);  // 将该frame设为可驱逐
+    // TODO:怎么重置frame_
+    frame_->pin_count_.store(0);  // reset frame
+    // frame_->Reset();
+    // TODO:以下怎么重置
+    // bpm_latch_ = nullptr;
+    is_valid_ = false;
+  }
+}
+
+/**********************************************************************************************************************/
+/**********************************************************************************************************************/
+/**********************************************************************************************************************/
+
 /**
  * @brief The only constructor for an RAII `ReadPageGuard` that creates a valid guard.
  *
@@ -28,9 +87,7 @@ namespace bustub {
  */
 ReadPageGuard::ReadPageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> frame,
                              std::shared_ptr<LRUKReplacer> replacer, std::shared_ptr<std::mutex> bpm_latch)
-    : page_id_(page_id), frame_(std::move(frame)), replacer_(std::move(replacer)), bpm_latch_(std::move(bpm_latch)) {
-  UNIMPLEMENTED("TODO(P1): Add implementation.");
-}
+    : IOPageGuard(page_id, frame, replacer, bpm_latch) {}
 
 /**
  * @brief The move constructor for `ReadPageGuard`.
@@ -47,7 +104,7 @@ ReadPageGuard::ReadPageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> fra
  *
  * @param that The other page guard.
  */
-ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept {}
+ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept : IOPageGuard(std::move(that)) {}
 
 /**
  * @brief The move assignment operator for `ReadPageGuard`.
@@ -66,7 +123,10 @@ ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept {}
  * @param that The other page guard.
  * @return ReadPageGuard& The newly valid `ReadPageGuard`.
  */
-auto ReadPageGuard::operator=(ReadPageGuard &&that) noexcept -> ReadPageGuard & { return *this; }
+auto ReadPageGuard::operator=(ReadPageGuard &&that) noexcept -> ReadPageGuard & {
+  IOPageGuard::operator=(std::move(that));
+  return *this;
+}
 
 /**
  * @brief Gets the page ID of the page this guard is protecting.
@@ -103,7 +163,7 @@ auto ReadPageGuard::IsDirty() const -> bool {
  *
  * TODO(P1): Add implementation.
  */
-void ReadPageGuard::Drop() { UNIMPLEMENTED("TODO(P1): Add implementation."); }
+void ReadPageGuard::Drop() { IOPageGuard::Drop(); }
 
 /** @brief The destructor for `ReadPageGuard`. This destructor simply calls `Drop()`. */
 ReadPageGuard::~ReadPageGuard() { Drop(); }
@@ -126,8 +186,9 @@ ReadPageGuard::~ReadPageGuard() { Drop(); }
  */
 WritePageGuard::WritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> frame,
                                std::shared_ptr<LRUKReplacer> replacer, std::shared_ptr<std::mutex> bpm_latch)
-    : page_id_(page_id), frame_(std::move(frame)), replacer_(std::move(replacer)), bpm_latch_(std::move(bpm_latch)) {
-  UNIMPLEMENTED("TODO(P1): Add implementation.");
+    : IOPageGuard(page_id, frame, replacer, bpm_latch) {
+  // 写入时设置该frame为脏页
+  frame->is_dirty_ = true;
 }
 
 /**
@@ -145,7 +206,7 @@ WritePageGuard::WritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> f
  *
  * @param that The other page guard.
  */
-WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept {}
+WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept : IOPageGuard(std::move(that)) {}
 
 /**
  * @brief The move assignment operator for `WritePageGuard`.
@@ -164,7 +225,10 @@ WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept {}
  * @param that The other page guard.
  * @return WritePageGuard& The newly valid `WritePageGuard`.
  */
-auto WritePageGuard::operator=(WritePageGuard &&that) noexcept -> WritePageGuard & { return *this; }
+auto WritePageGuard::operator=(WritePageGuard &&that) noexcept -> WritePageGuard & {  // free this原本内容
+  IOPageGuard::operator=(std::move(that));
+  return *this;
+}
 
 /**
  * @brief Gets the page ID of the page this guard is protecting.
@@ -209,7 +273,7 @@ auto WritePageGuard::IsDirty() const -> bool {
  *
  * TODO(P1): Add implementation.
  */
-void WritePageGuard::Drop() { UNIMPLEMENTED("TODO(P1): Add implementation."); }
+void WritePageGuard::Drop() { IOPageGuard::Drop(); }
 
 /** @brief The destructor for `WritePageGuard`. This destructor simply calls `Drop()`. */
 WritePageGuard::~WritePageGuard() { Drop(); }

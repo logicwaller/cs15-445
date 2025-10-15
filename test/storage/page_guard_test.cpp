@@ -25,7 +25,7 @@ namespace bustub {
 const size_t FRAMES = 10;
 const size_t K_DIST = 2;
 
-TEST(PageGuardTest, DISABLED_DropTest) {
+TEST(PageGuardTest, DropTest) {
   auto disk_manager = std::make_shared<DiskManagerUnlimitedMemory>();
   auto bpm = std::make_shared<BufferPoolManager>(FRAMES, disk_manager.get(), K_DIST);
 
@@ -114,7 +114,7 @@ TEST(PageGuardTest, DISABLED_DropTest) {
   disk_manager->ShutDown();
 }
 
-TEST(PageGuardTest, DISABLED_MoveTest) {
+TEST(PageGuardTest, MoveTest) {
   auto disk_manager = std::make_shared<DiskManagerUnlimitedMemory>();
   auto bpm = std::make_shared<BufferPoolManager>(FRAMES, disk_manager.get(), K_DIST);
 
@@ -166,7 +166,9 @@ TEST(PageGuardTest, DISABLED_MoveTest) {
   ASSERT_EQ(1, bpm->GetPinCount(pid3));
 
   // This will hang if page 2 was not unlatched correctly.
-  { auto temp_guard2 = bpm->WritePage(pid2); }
+  {
+    auto temp_guard2 = bpm->WritePage(pid2);
+  }
 
   auto guard4 = bpm->WritePage(pid4);
   auto guard5 = bpm->WritePage(pid5);
@@ -189,7 +191,9 @@ TEST(PageGuardTest, DISABLED_MoveTest) {
   ASSERT_EQ(1, bpm->GetPinCount(pid5));
 
   // This will hang if page 4 was not unlatched correctly.
-  { auto temp_guard4 = bpm->ReadPage(pid4); }
+  {
+    auto temp_guard4 = bpm->ReadPage(pid4);
+  }
 
   // Shutdown the disk manager and remove the temporary file we created.
   disk_manager->ShutDown();

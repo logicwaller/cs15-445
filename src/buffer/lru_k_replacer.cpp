@@ -52,7 +52,7 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id, [[maybe_unused]] AccessType
     LRUKNode &find_node = find_frame->second;
     find_node.history_.push_back(current_timestamp_++);
   } else {
-    if (node_store_.size() + 1 >= replacer_size_) {  // 若超出replacer_size,报错
+    if (node_store_.size() == replacer_size_) {  // 若超出replacer_size,报错
       BUSTUB_ASSERT(1, "RecordAccess Error: Invalid frame id(size larger than replacer_size)");
     } else {
       std::list<size_t> history;
