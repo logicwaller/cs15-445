@@ -72,7 +72,7 @@ auto IOPageGuard::operator=(IOPageGuard &&that) noexcept -> IOPageGuard & {
  */
 ReadPageGuard::ReadPageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> frame,
                              std::shared_ptr<LRUKReplacer> replacer, std::shared_ptr<std::mutex> bpm_latch)
-    : IOPageGuard(page_id, frame, replacer, bpm_latch) {}
+    : IOPageGuard(page_id, std::move(frame), std::move(replacer), std::move(bpm_latch)) {}
 
 /**
  * @brief The move constructor for `ReadPageGuard`.
@@ -182,9 +182,9 @@ ReadPageGuard::~ReadPageGuard() { Drop(); }
  */
 WritePageGuard::WritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> frame,
                                std::shared_ptr<LRUKReplacer> replacer, std::shared_ptr<std::mutex> bpm_latch)
-    : IOPageGuard(page_id, frame, replacer, bpm_latch) {
+    : IOPageGuard(page_id, std::move(frame), std::move(replacer), std::move(bpm_latch)) {
   // 写入时设置该frame为脏页
-  frame->is_dirty_ = true;
+  IOPageGuard::frame_->is_dirty_ = true;
 }
 
 /**

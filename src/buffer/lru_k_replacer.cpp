@@ -70,8 +70,12 @@ void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
   auto find_frame = node_store_.find(frame_id);
   if (find_frame != node_store_.end()) {  // 若frame_id存在记录
     LRUKNode &find_node = find_frame->second;
-    if (find_node.is_evictable_ && !set_evictable) curr_size_--;  // 若本可驱逐，修改为不可驱逐，减少size
-    if (!find_node.is_evictable_ && set_evictable) curr_size_++;  // 若本不可驱逐，修改为可驱逐，增加size
+    if (find_node.is_evictable_ && !set_evictable) {
+      curr_size_--;  // 若本可驱逐，修改为不可驱逐，减少size
+    }
+    if (!find_node.is_evictable_ && set_evictable) {
+      curr_size_++;  // 若本不可驱逐，修改为可驱逐，增加size
+    }
     find_node.is_evictable_ = set_evictable;
   } else {
     BUSTUB_ASSERT(2, "SetEvictable Error: frame_id not exist");
@@ -99,10 +103,10 @@ auto LRUKReplacer::GetNodeKTime(LRUKNode node) -> size_t {
   size_t history_size = node.history_.size();
   if (history_size < k_) {  // 若访问次数小于k_，返回inf
     return UINT64_MAX;
-  } else {
-    auto tem = std::next(node.history_.begin(), history_size - k_);
-    return current_timestamp_ - *tem;
   }
+
+  auto tem = std::next(node.history_.begin(), history_size - k_);
+  return current_timestamp_ - *tem;
 }
 
 }  // namespace bustub

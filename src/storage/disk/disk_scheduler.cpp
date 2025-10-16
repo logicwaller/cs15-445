@@ -40,7 +40,9 @@ void DiskScheduler::StartWorkerThread() {
   while (true) {
     std::optional<DiskRequest> request = request_queue_.Get();
     // 当读取值为空时结束进程
-    if (!request.has_value()) return;
+    if (!request.has_value()) {
+      return;
+    }
 
     DiskRequest request_value(std::move(request.value()));
     // 进行读/写操作

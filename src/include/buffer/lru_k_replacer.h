@@ -39,7 +39,7 @@ class LRUKNode {
 
   // 初始化
   explicit LRUKNode(std::list<size_t> history, frame_id_t fid, bool is_evict) {
-    history_ = history;
+    history_ = std::move(history);
     fid_ = fid;
     is_evictable_ = is_evict;
   }

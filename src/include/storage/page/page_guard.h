@@ -124,7 +124,7 @@ class ReadPageGuard : public IOPageGuard {
   }
   auto IsDirty() const -> bool;
   void Drop();
-  ~ReadPageGuard();
+  ~ReadPageGuard() override;
 
  private:
   /** @brief Only the buffer pool manager is allowed to construct a valid `ReadPageGuard.` */
@@ -186,7 +186,7 @@ class WritePageGuard : public IOPageGuard {
   }
   auto IsDirty() const -> bool;
   void Drop();
-  ~WritePageGuard();
+  ~WritePageGuard() override;
 
  private:
   /** @brief Only the buffer pool manager is allowed to construct a valid `WritePageGuard.` */

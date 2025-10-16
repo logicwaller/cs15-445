@@ -402,7 +402,7 @@ auto BufferPoolManager::ReadPage(page_id_t page_id, AccessType access_type) -> R
  * @return `false` if the page could not be found in the page table, otherwise `true`.
  */
 auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
-  // TODO:需不需要加锁
+  // TODO(logic):需不需要加锁
   // std::unique_lock<std::mutex> lock(*bpm_latch_);  // 加锁,析构时自动释放
   auto find_frame = page_table_.find(page_id);
   if (find_frame != page_table_.end()) {  // 若该页存在于memory
@@ -418,9 +418,10 @@ auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
       future.get();
     }
     return true;
-  } else {  // 若该页不存在于memory,返回false
-    return false;
   }
+
+  // 若该页不存在于memory,返回false
+  return false;
 }
 
 /**
