@@ -27,12 +27,13 @@ namespace bustub {
 enum class AccessType { Unknown = 0, Lookup, Scan, Index };
 
 class LRUKNode {
- public:  // 这里由private改为public
+  friend class LRUKReplacer;  // 这里添加friend class，使replacer能访问私有变量
+
+ private:
   /** History of last seen K timestamps of this page. Least recent timestamp stored in front. */
   // Remove maybe_unused if you start using them. Feel free to change the member variables as you want.
 
   std::list<size_t> history_;  // 最早访问在开头，最近访问在结尾
-  [[maybe_unused]] size_t k_;
   frame_id_t fid_;
   bool is_evictable_{false};
 
@@ -173,7 +174,7 @@ class LRUKReplacer {
   size_t curr_size_{0};
   size_t replacer_size_;
   size_t k_;
-  [[maybe_unused]] std::mutex latch_;
+  std::mutex latch_;  // 保护内部数据线程安全
 };
 
 }  // namespace bustub

@@ -18,6 +18,7 @@ namespace bustub {
 LRUKReplacer::LRUKReplacer(size_t num_frames, size_t k) : replacer_size_(num_frames), k_(k) {}
 
 auto LRUKReplacer::Evict() -> std::optional<frame_id_t> {
+  std::unique_lock<std::mutex> lock(latch_);  // 加锁,析构时自动释放
   size_t max_time = 0;
   size_t inf_max_time = 0;  // 记录多个inf情况下最近的最近访问记录
   std::optional<frame_id_t> max_fram = std::nullopt;
@@ -47,6 +48,7 @@ auto LRUKReplacer::Evict() -> std::optional<frame_id_t> {
 }
 
 void LRUKReplacer::RecordAccess(frame_id_t frame_id, [[maybe_unused]] AccessType access_type) {
+  std::unique_lock<std::mutex> lock(latch_);  // 加锁,析构时自动释放
   auto find_frame = node_store_.find(frame_id);
   if (find_frame != node_store_.end()) {  // node_store_存在frame_id,则插入记录
     LRUKNode &find_node = find_frame->second;
@@ -64,6 +66,7 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id, [[maybe_unused]] AccessType
 }
 
 void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
+  std::unique_lock<std::mutex> lock(latch_);  // 加锁,析构时自动释放
   auto find_frame = node_store_.find(frame_id);
   if (find_frame != node_store_.end()) {  // 若frame_id存在记录
     LRUKNode &find_node = find_frame->second;
@@ -76,6 +79,7 @@ void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
 }
 
 void LRUKReplacer::Remove(frame_id_t frame_id) {
+  std::unique_lock<std::mutex> lock(latch_);  // 加锁,析构时自动释放
   auto find_frame = node_store_.find(frame_id);
   if (find_frame != node_store_.end()) {  // 若frame_id存在于node_store_
     if (!find_frame->second.is_evictable_) {

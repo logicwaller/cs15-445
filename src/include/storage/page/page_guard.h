@@ -22,10 +22,7 @@ namespace bustub {
 class BufferPoolManager;
 class FrameHeader;
 
-/** 辅助类，创建WritePageGuard和ReadPageGuard共同父类
- *   由于父类构造函数只会初始化父类内部的变量，但是我希望子类内部存储变量，故不能在父类实现构造函数后子类继承
- *   因此该类仅用于实现辅助函数
- */
+/** 辅助类，创建WritePageGuard和ReadPageGuard共同父类 */
 class IOPageGuard {
  public:
   IOPageGuard() = default;
@@ -34,7 +31,6 @@ class IOPageGuard {
   auto operator=(const IOPageGuard &) -> IOPageGuard & = delete;
   IOPageGuard(IOPageGuard &&that) noexcept;
   auto operator=(IOPageGuard &&that) noexcept -> IOPageGuard &;
-  void Drop();  // TODO:write和read一样吗
   virtual ~IOPageGuard() = default;
 
  protected:
@@ -86,6 +82,7 @@ class IOPageGuard {
    * If you want extra (non-existent) style points, and you want to be extra fancy, then you can look into the
    * `std::shared_lock` type and use that for the latching mechanism instead of manually calling `lock` and `unlock`.
    */
+  std::shared_mutex smutex_;
 };
 
 /**
@@ -134,55 +131,13 @@ class ReadPageGuard : public IOPageGuard {
   explicit ReadPageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> frame, std::shared_ptr<LRUKReplacer> replacer,
                          std::shared_ptr<std::mutex> bpm_latch);
 
-  //   /** @brief The page ID of the page we are guarding. */
-  //   page_id_t page_id_;
-
-  //   /**
-  //    * @brief The frame that holds the page this guard is protecting.
-  //    *
-  //    * Almost all operations of this page guard should be done via this shared pointer to a `FrameHeader`.
-  //    */
-  //   std::shared_ptr<FrameHeader> frame_;
-
-  //   /**
-  //    * @brief A shared pointer to the buffer pool's replacer.
-  //    *
-  //    * Since the buffer pool cannot know when this `ReadPageGuard` gets destructed, we maintain a pointer to the
-  //    buffer
-  //    * pool's replacer in order to set the frame as evictable on destruction.
-  //    */
-  //   std::shared_ptr<LRUKReplacer> replacer_;
-
-  //   /**
-  //    * @brief A shared pointer to the buffer pool's latch.
-  //    *
-  //    * Since the buffer pool cannot know when this `ReadPageGuard` gets destructed, we maintain a pointer to the
-  //    buffer
-  //    * pool's latch for when we need to update the frame's eviction state in the buffer pool replacer.
-  //    */
-  //   std::shared_ptr<std::mutex> bpm_latch_;
-
-  //   /**
-  //    * @brief The validity flag for this `ReadPageGuard`.
-  //    *
-  //    * Since we must allow for the construction of invalid page guards (see the documentation above), we must
-  //    maintain
-  //    * some sort of state that tells us if this page guard is valid or not. Note that the default constructor will
-  //    * automatically set this field to `false`.
-  //    *
-  //    * If we did not maintain this flag, then the move constructor / move assignment operators could attempt to
-  //    destruct
-  //    * or `Drop()` invalid members, causing a segmentation fault.
-  //    */
-  //   bool is_valid_{false};
-
-  //   /**
-  //    * TODO(P1): You may add any fields under here that you think are necessary.
-  //    *
-  //    * If you want extra (non-existent) style points, and you want to be extra fancy, then you can look into the
-  //    * `std::shared_lock` type and use that for the latching mechanism instead of manually calling `lock` and
-  //    `unlock`.
-  //    */
+  /**
+   * TODO(P1): You may add any fields under here that you think are necessary.
+   *
+   * If you want extra (non-existent) style points, and you want to be extra fancy, then you can look into the
+   * `std::shared_lock` type and use that for the latching mechanism instead of manually calling `lock` and
+   `unlock`.
+   */
 };
 
 /**
@@ -238,55 +193,13 @@ class WritePageGuard : public IOPageGuard {
   explicit WritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> frame, std::shared_ptr<LRUKReplacer> replacer,
                           std::shared_ptr<std::mutex> bpm_latch);
 
-  //   /** @brief The page ID of the page we are guarding. */
-  //   page_id_t page_id_;
-
-  //   /**
-  //    * @brief The frame that holds the page this guard is protecting.
-  //    *
-  //    * Almost all operations of this page guard should be done via this shared pointer to a `FrameHeader`.
-  //    */
-  //   std::shared_ptr<FrameHeader> frame_;
-
-  //   /**
-  //    * @brief A shared pointer to the buffer pool's replacer.
-  //    *
-  //    * Since the buffer pool cannot know when this `WritePageGuard` gets destructed, we maintain a pointer to the
-  //    buffer
-  //    * pool's replacer in order to set the frame as evictable on destruction.
-  //    */
-  //   std::shared_ptr<LRUKReplacer> replacer_;
-
-  //   /**
-  //    * @brief A shared pointer to the buffer pool's latch.
-  //    *
-  //    * Since the buffer pool cannot know when this `WritePageGuard` gets destructed, we maintain a pointer to the
-  //    buffer
-  //    * pool's latch for when we need to update the frame's eviction state in the buffer pool replacer.
-  //    */
-  //   std::shared_ptr<std::mutex> bpm_latch_;
-
-  //   /**
-  //    * @brief The validity flag for this `WritePageGuard`.
-  //    *
-  //    * Since we must allow for the construction of invalid page guards (see the documentation above), we must
-  //    maintain
-  //    * some sort of state that tells us if this page guard is valid or not. Note that the default constructor will
-  //    * automatically set this field to `false`.
-  //    *
-  //    * If we did not maintain this flag, then the move constructor / move assignment operators could attempt to
-  //    destruct
-  //    * or `Drop()` invalid members, causing a segmentation fault.
-  //    */
-  //   bool is_valid_{false};
-
-  //   /**
-  //    * TODO(P1): You may add any fields under here that you think are necessary.
-  //    *
-  //    * If you want extra (non-existent) style points, and you want to be extra fancy, then you can look into the
-  //    * `std::unique_lock` type and use that for the latching mechanism instead of manually calling `lock` and
-  //    `unlock`.
-  //    */
+  /**
+   * TODO(P1): You may add any fields under here that you think are necessary.
+   *
+   * If you want extra (non-existent) style points, and you want to be extra fancy, then you can look into the
+   * `std::unique_lock` type and use that for the latching mechanism instead of manually calling `lock` and
+   `unlock`.
+   */
 };
 
 }  // namespace bustub

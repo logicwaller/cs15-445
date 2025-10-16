@@ -97,7 +97,7 @@ class FrameHeader {
    * else in the buffer pool manager...
    */
 
-  /** 记录page_id */
+  /** @brief 记录page_id */
   std::optional<page_id_t> page_id_;
 };
 
@@ -140,6 +140,7 @@ class BufferPoolManager {
    * @brief The latch protecting the buffer pool's inner data structures.
    *
    * TODO(P1) We recommend replacing this comment with details about what this latch actually protects.
+   * 保护page_table，free_frames_更改时线程安全
    */
   std::shared_ptr<std::mutex> bpm_latch_;
 

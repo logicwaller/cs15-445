@@ -38,9 +38,7 @@ IOPageGuard::IOPageGuard(IOPageGuard &&that) noexcept {
 }
 
 auto IOPageGuard::operator=(IOPageGuard &&that) noexcept -> IOPageGuard & {
-  // free this原本内容
-  if (this != &that) {
-    this->Drop();
+  if (this != &that) {  // 只有当this与that不是同一个值时需要操作
     // 复制that的内容
     page_id_ = that.page_id_;
     frame_ = std::move(that.frame_);
@@ -54,19 +52,6 @@ auto IOPageGuard::operator=(IOPageGuard &&that) noexcept -> IOPageGuard & {
     that.is_valid_ = false;
   }
   return *this;
-}
-
-void IOPageGuard::Drop() {
-  if (is_valid_) {  // 只有vaild时会执行
-    // 更新replacer_
-    replacer_->SetEvictable(frame_->frame_id_, true);  // 将该frame设为可驱逐
-    // TODO:怎么重置frame_
-    frame_->pin_count_.store(0);  // reset frame
-    // frame_->Reset();
-    // TODO:以下怎么重置
-    // bpm_latch_ = nullptr;
-    is_valid_ = false;
-  }
 }
 
 /**********************************************************************************************************************/
@@ -124,7 +109,11 @@ ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept : IOPageGuard(std::m
  * @return ReadPageGuard& The newly valid `ReadPageGuard`.
  */
 auto ReadPageGuard::operator=(ReadPageGuard &&that) noexcept -> ReadPageGuard & {
-  IOPageGuard::operator=(std::move(that));
+  if (this != &that) {
+    // 重置this原本内容
+    this->Drop();
+    IOPageGuard::operator=(std::move(that));
+  }
   return *this;
 }
 
@@ -163,7 +152,14 @@ auto ReadPageGuard::IsDirty() const -> bool {
  *
  * TODO(P1): Add implementation.
  */
-void ReadPageGuard::Drop() { IOPageGuard::Drop(); }
+void ReadPageGuard::Drop() {
+  if (is_valid_) {
+    frame_->pin_count_.fetch_sub(1);                   // pin_count--
+    replacer_->SetEvictable(frame_->frame_id_, true);  // 将该frame设为可驱逐
+    frame_->rwlatch_.unlock_shared();                  // 释放读锁
+    is_valid_ = false;                                 // 设置is_vaild为false
+  }
+}
 
 /** @brief The destructor for `ReadPageGuard`. This destructor simply calls `Drop()`. */
 ReadPageGuard::~ReadPageGuard() { Drop(); }
@@ -226,7 +222,11 @@ WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept : IOPageGuard(std
  * @return WritePageGuard& The newly valid `WritePageGuard`.
  */
 auto WritePageGuard::operator=(WritePageGuard &&that) noexcept -> WritePageGuard & {  // free this原本内容
-  IOPageGuard::operator=(std::move(that));
+  if (this != &that) {
+    // 重置this原本内容
+    this->Drop();
+    IOPageGuard::operator=(std::move(that));
+  }
   return *this;
 }
 
@@ -273,7 +273,14 @@ auto WritePageGuard::IsDirty() const -> bool {
  *
  * TODO(P1): Add implementation.
  */
-void WritePageGuard::Drop() { IOPageGuard::Drop(); }
+void WritePageGuard::Drop() {
+  if (is_valid_) {
+    frame_->pin_count_.fetch_sub(1);
+    replacer_->SetEvictable(frame_->frame_id_, true);  // 将该frame设为可驱逐
+    frame_->rwlatch_.unlock();                         // 释放写锁
+    is_valid_ = false;                                 // 设置is_vaild为false
+  }
+}
 
 /** @brief The destructor for `WritePageGuard`. This destructor simply calls `Drop()`. */
 WritePageGuard::~WritePageGuard() { Drop(); }

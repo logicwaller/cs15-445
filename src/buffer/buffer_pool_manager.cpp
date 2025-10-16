@@ -124,15 +124,9 @@ auto BufferPoolManager::Size() const -> size_t { return num_frames_; }
  * @return The page ID of the newly allocated page.
  */
 auto BufferPoolManager::NewPage() -> page_id_t {
-  // 将next_page_id++;本次实现在DeletePage时不会减少next_page_id,故其可以作为总page数分配页数
-  next_page_id_.fetch_add(1);
+  // 本次实现在DeletePage时不会减少next_page_id,故next_page_id即是总页数，也可以作为新page的id
+  next_page_id_.fetch_add(1);  // 将next_page_id++
   disk_scheduler_->IncreaseDiskSpace(next_page_id_);
-  // TODO:是否需要将该page绑定到frame
-  // frame_id_t frame_id = *free_frames_.begin();
-  // free_frames_.pop_front();
-  // page_table_.insert(static_cast<page_id_t>(next_page_id_), frame_id);
-  // frames_[frame_id]->page_id_ = next_page_id_;  // 更新frame内的page_id
-
   return next_page_id_;
 }
 
@@ -163,6 +157,7 @@ auto BufferPoolManager::NewPage() -> page_id_t {
  * @return `false` if the page exists but could not be deleted, `true` if the page didn't exist or deletion succeeded.
  */
 auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
+  std::unique_lock<std::mutex> lock(*bpm_latch_);  // 加锁,析构时自动释放
   auto find_page = page_table_.find(page_id);
   if (find_page != page_table_.end()) {  // 若page存在于缓冲池中
     frame_id_t frame_id = find_page->second;
@@ -178,7 +173,6 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
   }
 
   // 无论是否在缓冲池中，只要未pinned，都从disk中去除该page
-  // TODO:是否需要flashpage
   disk_scheduler_->DeallocatePage(page_id);
   return true;
 }
@@ -223,15 +217,17 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
  * returns `std::nullopt`, otherwise returns a `WritePageGuard` ensuring exclusive and mutable access to a page's data.
  */
 auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_type) -> std::optional<WritePageGuard> {
-  // TODO:同步
   std::optional<frame_id_t> frame_id = GetAvailableFrame(page_id);  // 获取可插入page的frame
   if (!frame_id.has_value()) {                                      // 若不可插入page,返回nullopt
     return std::nullopt;
   }
+  /* 同步 */
+  std::shared_ptr<FrameHeader> frame = frames_[frame_id.value()];
+  frame->rwlatch_.lock();  // 设置写锁
   // 将page写入frame中
   BringPageToFrame(page_id, frame_id.value(), access_type);
   // 构造并返回writeguard
-  WritePageGuard write_guard(page_id, frames_[frame_id.value()], replacer_, bpm_latch_);
+  WritePageGuard write_guard(page_id, frame, replacer_, bpm_latch_);
   return write_guard;
 }
 
@@ -260,53 +256,66 @@ auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_ty
  * returns `std::nullopt`, otherwise returns a `ReadPageGuard` ensuring shared and read-only access to a page's data.
  */
 auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_type) -> std::optional<ReadPageGuard> {
-  // TODO:同步
   std::optional<frame_id_t> frame_id = GetAvailableFrame(page_id);  // 获取可插入page的frame
   if (!frame_id.has_value()) {                                      // 若不可插入page,返回nullopt
     return std::nullopt;
   }
+  /* 同步 */
+  std::shared_ptr<FrameHeader> frame = frames_[frame_id.value()];
+  frame->rwlatch_.lock_shared();  // 设置读锁
   // 将page写入frame中
   BringPageToFrame(page_id, frame_id.value(), access_type);
   // 构造并返回readguard
-  ReadPageGuard read_guard(page_id, frames_[frame_id.value()], replacer_, bpm_latch_);
+  ReadPageGuard read_guard(page_id, frame, replacer_, bpm_latch_);
   return read_guard;
 }
 
 /**
  * @brief 返回可插入指定page的frame;若通过驱逐获得的frame,则处理原frame内容;若无法将page插入内存,返回nullopt
+ *        若从disk中获取page，则读取disk中相应数据到memory中
  *
  * @param page_id The ID of the page we want to access.
  *
  * @return 若可插入page,返回frame_id;否则返回nullopt
  */
 auto BufferPoolManager::GetAvailableFrame(page_id_t page_id) -> std::optional<frame_id_t> {
+  std::unique_lock<std::mutex> lock(*bpm_latch_);  // 加锁,析构时自动释放
   frame_id_t frame_id;
   auto find_page = page_table_.find(page_id);
   if (find_page != page_table_.end()) {  // case1:page存在于memory
     // frame_id直接指定为内存中的frame
     frame_id = find_page->second;
-  } else if (!free_frames_.empty()) {  // case2:page不存在于memory，但存在可用memory
-    // 从free_frames中去除一个frame储存page
-    frame_id = *free_frames_.begin();
-    free_frames_.pop_front();
-  } else {  // case3:不存在可用memory，需要尝试驱除
-    std::optional<frame_id_t> evited_frame_id = replacer_->Evict();
-    if (!evited_frame_id.has_value()) {  // 若无法驱逐，则说明无法插入内存，返回nullopt
-      return std::nullopt;
-    }
-    frame_id = evited_frame_id.value();  // 记录用于储存page的frame
-    /* 若可以驱逐，则将evited_frame原内容驱除 */
-    // 将evited_frame内的page写回disk
-    FlushPage(frames_[frame_id]->page_id_.value());
-    // 将evited_frame本身内容清空
-    std::shared_ptr<FrameHeader> evited_frame = frames_[frame_id];
-    if (evited_frame->page_id_.has_value()) {  // 清除page_table中的对应
-      auto find_evited_page = page_table_.find(evited_frame->page_id_.value());
-      if (find_evited_page != page_table_.end()) {
-        page_table_.erase(find_evited_page);
+  } else {                        // 当page不存在于memory，则需要从disk中获取
+    if (!free_frames_.empty()) {  // case2:page不存在于memory，但存在可用memory
+      // 从free_frames中去除一个frame储存page
+      frame_id = *free_frames_.begin();
+      free_frames_.pop_front();
+    } else {  // case3:不存在可用memory，需要尝试驱除
+      std::optional<frame_id_t> evited_frame_id = replacer_->Evict();
+      if (!evited_frame_id.has_value()) {  // 若无法驱逐，则说明无法插入内存，返回nullopt
+        return std::nullopt;
       }
+      frame_id = evited_frame_id.value();  // 记录用于储存page的frame
+      /* 若可以驱逐，则将evited_frame原内容驱除 */
+      // 将evited_frame内的page写回disk
+      FlushPage(frames_[frame_id]->page_id_.value());
+      // 将evited_frame本身内容清空
+      std::shared_ptr<FrameHeader> evited_frame = frames_[frame_id];
+      if (evited_frame->page_id_.has_value()) {  // 清除page_table中的对应
+        auto find_evited_page = page_table_.find(evited_frame->page_id_.value());
+        if (find_evited_page != page_table_.end()) {
+          page_table_.erase(find_evited_page);
+        }
+      }
+      evited_frame->Reset();  // 将frame内容清除
     }
-    evited_frame->Reset();  // 将frame内容清除
+
+    // 从disk读取page数据至memory中
+    auto promise = disk_scheduler_->CreatePromise();
+    auto futuer = promise.get_future();
+    DiskRequest request{false, frames_[frame_id]->data_.data(), page_id, std::move(promise)};
+    disk_scheduler_->Schedule(std::move(request));
+    futuer.get();  // 等待request处理完后进行下一步
   }
   return frame_id;
 }
@@ -315,15 +324,10 @@ auto BufferPoolManager::GetAvailableFrame(page_id_t page_id) -> std::optional<fr
  * @brief 将指定page写入指定frame中，更新page_table和replacer
  */
 auto BufferPoolManager::BringPageToFrame(page_id_t page_id, frame_id_t frame_id, AccessType access_type) -> void {
+  std::unique_lock<std::mutex> lock(*bpm_latch_);  // 加锁,析构时自动释放
   // 更新frame
   frames_[frame_id]->page_id_ = page_id;       // 更新frame内部page_id
   frames_[frame_id]->pin_count_.fetch_add(1);  // 将该frame的pin_count++
-  // 读取page数据至frame中
-  auto promise = disk_scheduler_->CreatePromise();
-  auto futuer = promise.get_future();
-  DiskRequest request{false, frames_[frame_id]->data_.data(), page_id, std::move(promise)};
-  disk_scheduler_->Schedule(std::move(request));
-  futuer.get();  // 等待request处理完后进行下一步
   // 更新page_table
   page_table_.insert(std::pair<page_id_t, frame_id_t>(page_id, frame_id));
   // 更新replacer
@@ -398,6 +402,8 @@ auto BufferPoolManager::ReadPage(page_id_t page_id, AccessType access_type) -> R
  * @return `false` if the page could not be found in the page table, otherwise `true`.
  */
 auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
+  // TODO:需不需要加锁
+  // std::unique_lock<std::mutex> lock(*bpm_latch_);  // 加锁,析构时自动释放
   auto find_frame = page_table_.find(page_id);
   if (find_frame != page_table_.end()) {  // 若该页存在于memory
     std::shared_ptr<FrameHeader> frame = frames_[find_frame->second];
@@ -427,7 +433,11 @@ auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
  *
  * TODO(P1): Add implementation
  */
-void BufferPoolManager::FlushAllPages() { UNIMPLEMENTED("TODO(P1): Add implementation."); }
+void BufferPoolManager::FlushAllPages() {
+  for (std::pair<page_id_t, frame_id_t> pair : page_table_) {
+    FlushPage(pair.first);
+  }
+}
 
 /**
  * @brief Retrieves the pin count of a page. If the page does not exist in memory, return `std::nullopt`.
@@ -454,6 +464,7 @@ void BufferPoolManager::FlushAllPages() { UNIMPLEMENTED("TODO(P1): Add implement
  * @return std::optional<size_t> The pin count if the page exists, otherwise `std::nullopt`.
  */
 auto BufferPoolManager::GetPinCount(page_id_t page_id) -> std::optional<size_t> {
+  std::unique_lock<std::mutex> lock(*bpm_latch_);  // 加锁,析构时自动释放
   auto find_frame = page_table_.find(page_id);
   if (find_frame == page_table_.end()) {  // 若page不存在于内存,直接返回nullopt
     return std::nullopt;
