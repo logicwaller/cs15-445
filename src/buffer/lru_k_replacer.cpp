@@ -20,20 +20,25 @@ LRUKReplacer::LRUKReplacer(size_t num_frames, size_t k) : replacer_size_(num_fra
 auto LRUKReplacer::Evict() -> std::optional<frame_id_t> {
   std::unique_lock<std::mutex> lock(latch_);  // 加锁,析构时自动释放
   size_t max_time = 0;
-  size_t inf_max_time = 0;  // 记录多个inf情况下最近的最近访问记录
+  bool has_inf = false;  // 记录是否存在inf的frame(即访问次数小于k_的frame)
   std::optional<frame_id_t> max_fram = std::nullopt;
-  for (std::pair pair : node_store_) {
+  for (const auto &pair : node_store_) {
     if (pair.second.is_evictable_) {
       size_t ktime = GetNodeKTime(pair.second);
 
-      if (ktime == UINT64_MAX) {  // 若ktime为inf,返回最远的最近访问frame
-        max_time = UINT64_MAX;    // 将max_time设置为inf,防止进入普通情况的判断
+      if (ktime == UINT64_MAX) {  // 若ktime为inf,返回最早的最近访问frame
+        if (!has_inf) {           // 第一次遇到inf时，重置max_time,设置has_inf
+          max_time = 0;
+          has_inf = true;
+        }
         size_t relative_time = current_timestamp_ - pair.second.history_.back();
-        if (relative_time > inf_max_time) {
-          inf_max_time = relative_time;
+        if (relative_time > max_time) {
+          max_time = relative_time;
           max_fram.emplace(pair.first);
         }
-      } else if (ktime > max_time) {
+      }
+
+      if (!has_inf && ktime > max_time) {  // 若不存在inf，则正常记录最早的倒数第k_次访问frame
         max_time = ktime;
         max_fram.emplace(pair.first);
       }
@@ -59,8 +64,8 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id, [[maybe_unused]] AccessType
     } else {
       std::list<size_t> history;
       history.push_back(current_timestamp_++);
-      LRUKNode node(history, frame_id, false);  // 默认不可驱逐
-      node_store_.insert(std::pair<frame_id_t, LRUKNode>(frame_id, node));
+      LRUKNode node(std::move(history), frame_id, false);  // 默认不可驱逐
+      node_store_.emplace(frame_id, std::move(node));
     }
   }
 }
@@ -89,7 +94,7 @@ void LRUKReplacer::Remove(frame_id_t frame_id) {
     if (!find_frame->second.is_evictable_) {
       BUSTUB_ASSERT(3, "Remove Error: frame_id is not evictable");
     } else {
-      node_store_.erase(frame_id);
+      node_store_.erase(find_frame);
       curr_size_--;
     }
   } else {
@@ -104,7 +109,7 @@ auto LRUKReplacer::GetNodeKTime(LRUKNode node) -> size_t {
   if (history_size < k_) {  // 若访问次数小于k_，返回inf
     return UINT64_MAX;
   }
-
+  // 否则返回倒数第k_次访问时间与当前时间的距离
   auto tem = std::next(node.history_.begin(), history_size - k_);
   return current_timestamp_ - *tem;
 }

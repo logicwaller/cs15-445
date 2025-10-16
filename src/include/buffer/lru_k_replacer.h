@@ -29,6 +29,8 @@ enum class AccessType { Unknown = 0, Lookup, Scan, Index };
 class LRUKNode {
   friend class LRUKReplacer;  // 这里添加friend class，使replacer能访问私有变量
 
+  ~LRUKNode() = default;  // 添加默认析构函数
+
  private:
   /** History of last seen K timestamps of this page. Least recent timestamp stored in front. */
   // Remove maybe_unused if you start using them. Feel free to change the member variables as you want.
