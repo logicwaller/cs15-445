@@ -217,17 +217,12 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
  * returns `std::nullopt`, otherwise returns a `WritePageGuard` ensuring exclusive and mutable access to a page's data.
  */
 auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_type) -> std::optional<WritePageGuard> {
-  std::optional<frame_id_t> frame_id = GetAvailableFrame(page_id);  // 获取可插入page的frame
-  if (!frame_id.has_value()) {                                      // 若不可插入page,返回nullopt
+  std::optional<frame_id_t> frame_id = GetAvailableFrame(page_id, true, access_type);  // 获取可插入page的frame
+  if (!frame_id.has_value()) {                                                         // 若不可插入page,返回nullopt
     return std::nullopt;
   }
-  /* 同步 */
-  std::shared_ptr<FrameHeader> frame = frames_[frame_id.value()];
-  frame->rwlatch_.lock();  // 设置写锁
-  // 将page写入frame中
-  BringPageToFrame(page_id, frame_id.value(), access_type);
   // 构造并返回writeguard
-  WritePageGuard write_guard(page_id, frame, replacer_, bpm_latch_);
+  WritePageGuard write_guard(page_id, frames_[frame_id.value()], replacer_, bpm_latch_);
   return write_guard;
 }
 
@@ -256,35 +251,41 @@ auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_ty
  * returns `std::nullopt`, otherwise returns a `ReadPageGuard` ensuring shared and read-only access to a page's data.
  */
 auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_type) -> std::optional<ReadPageGuard> {
-  std::optional<frame_id_t> frame_id = GetAvailableFrame(page_id);  // 获取可插入page的frame
-  if (!frame_id.has_value()) {                                      // 若不可插入page,返回nullopt
+  std::optional<frame_id_t> frame_id = GetAvailableFrame(page_id, false, access_type);  // 获取可插入page的frame
+  if (!frame_id.has_value()) {                                                          // 若不可插入page,返回nullopt
     return std::nullopt;
   }
-  /* 同步 */
-  std::shared_ptr<FrameHeader> frame = frames_[frame_id.value()];
-  frame->rwlatch_.lock_shared();  // 设置读锁
-  // 将page写入frame中
-  BringPageToFrame(page_id, frame_id.value(), access_type);
   // 构造并返回readguard
-  ReadPageGuard read_guard(page_id, frame, replacer_, bpm_latch_);
+  ReadPageGuard read_guard(page_id, frames_[frame_id.value()], replacer_, bpm_latch_);
   return read_guard;
 }
 
 /**
  * @brief 返回可插入指定page的frame;若通过驱逐获得的frame,则处理原frame内容;若无法将page插入内存,返回nullopt
  *        若从disk中获取page，则读取disk中相应数据到memory中
+ *        若write模式,则设置lock();若read模式,则设置lock_shared()
  *
  * @param page_id The ID of the page we want to access.
+ * @param is_write write/read模式
  *
  * @return 若可插入page,返回frame_id;否则返回nullopt
  */
-auto BufferPoolManager::GetAvailableFrame(page_id_t page_id) -> std::optional<frame_id_t> {
+auto BufferPoolManager::GetAvailableFrame(page_id_t page_id, bool is_write, AccessType access_type)
+    -> std::optional<frame_id_t> {
   std::unique_lock<std::mutex> lock(*bpm_latch_);  // 加锁,析构时自动释放
   frame_id_t frame_id;
   auto find_page = page_table_.find(page_id);
   if (find_page != page_table_.end()) {  // case1:page存在于memory
     // frame_id直接指定为内存中的frame
     frame_id = find_page->second;
+    /* 设置同步 */
+    std::shared_ptr<FrameHeader> frame = frames_[frame_id];
+    lock.unlock();  // 在frame内设置锁时临时unlock bpm_latch,否则会死锁
+    if (is_write) {
+      frame->rwlatch_.lock();  // 设置写锁
+    } else {
+      frame->rwlatch_.lock_shared();  // 设置读锁
+    }
   } else {                        // 当page不存在于memory，则需要从disk中获取
     if (!free_frames_.empty()) {  // case2:page不存在于memory，但存在可用memory
       // 从free_frames中去除一个frame储存page
@@ -295,12 +296,12 @@ auto BufferPoolManager::GetAvailableFrame(page_id_t page_id) -> std::optional<fr
       if (!evited_frame_id.has_value()) {  // 若无法驱逐，则说明无法插入内存，返回nullopt
         return std::nullopt;
       }
-      frame_id = evited_frame_id.value();  // 记录用于储存page的frame
+      frame_id = evited_frame_id.value();                             // 记录用于储存page的frame
+      std::shared_ptr<FrameHeader> evited_frame = frames_[frame_id];  // 记录要驱逐的frame
       /* 若可以驱逐，则将evited_frame原内容驱除 */
       // 将evited_frame内的page写回disk
-      FlushPage(frames_[frame_id]->page_id_.value());
-      // 将evited_frame本身内容清空
-      std::shared_ptr<FrameHeader> evited_frame = frames_[frame_id];
+      FlushPage(evited_frame->page_id_.value());
+      // 将页表中对应记录删除
       if (evited_frame->page_id_.has_value()) {  // 清除page_table中的对应
         auto find_evited_page = page_table_.find(evited_frame->page_id_.value());
         if (find_evited_page != page_table_.end()) {
@@ -310,29 +311,34 @@ auto BufferPoolManager::GetAvailableFrame(page_id_t page_id) -> std::optional<fr
       evited_frame->Reset();  // 将frame内容清除
     }
 
+    /* 设置同步 */
+    std::shared_ptr<FrameHeader> frame = frames_[frame_id];
+    lock.unlock();  // 在frame内设置锁时临时unlock bpm_latch,否则会死锁
+    if (is_write) {
+      frame->rwlatch_.lock();  // 设置写锁
+    } else {
+      frame->rwlatch_.lock_shared();  // 设置读锁
+    }
     // 从disk读取page数据至memory中
     auto promise = disk_scheduler_->CreatePromise();
     auto futuer = promise.get_future();
-    DiskRequest request{false, frames_[frame_id]->data_.data(), page_id, std::move(promise)};
+    DiskRequest request{false, frame->data_.data(), page_id, std::move(promise)};
     disk_scheduler_->Schedule(std::move(request));
     futuer.get();  // 等待request处理完后进行下一步
   }
-  return frame_id;
-}
 
-/**
- * @brief 将指定page写入指定frame中，更新page_table和replacer
- */
-auto BufferPoolManager::BringPageToFrame(page_id_t page_id, frame_id_t frame_id, AccessType access_type) -> void {
-  std::unique_lock<std::mutex> lock(*bpm_latch_);  // 加锁,析构时自动释放
+  /* 更新各个记录 */
+  lock.lock();  // 更新时再加锁bpm_lock
   // 更新frame
   frames_[frame_id]->page_id_ = page_id;       // 更新frame内部page_id
   frames_[frame_id]->pin_count_.fetch_add(1);  // 将该frame的pin_count++
   // 更新page_table
-  page_table_.insert(std::pair<page_id_t, frame_id_t>(page_id, frame_id));
+  page_table_.insert_or_assign(page_id, frame_id);
   // 更新replacer
   replacer_->RecordAccess(frame_id, access_type);  // 记录本次访问
   replacer_->SetEvictable(frame_id, false);
+
+  return frame_id;
 }
 
 /**
