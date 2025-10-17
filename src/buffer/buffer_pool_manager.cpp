@@ -170,6 +170,7 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
     free_frames_.push_back(static_cast<int>(frame_id));  // 将该frame设为free
     frame->Reset();                                      // reset该frame
     page_table_.erase(find_page);                        // 在对应表中删除该page
+    replacer_->Remove(frame_id);                         // 在replacer去除该记录
   }
 
   // 无论是否在缓冲池中，只要未pinned，都从disk中去除该page

@@ -19,37 +19,37 @@ LRUKReplacer::LRUKReplacer(size_t num_frames, size_t k) : replacer_size_(num_fra
 
 auto LRUKReplacer::Evict() -> std::optional<frame_id_t> {
   std::unique_lock<std::mutex> lock(latch_);  // 加锁,析构时自动释放
-  size_t max_time = 0;
-  bool has_inf = false;  // 记录是否存在inf的frame(即访问次数小于k_的frame)
-  std::optional<frame_id_t> max_fram = std::nullopt;
+  size_t min_time = UINT64_MAX;
+  bool has_inf = false;                                 // 记录是否存在inf的frame(即访问次数小于k_的frame)
+  std::optional<frame_id_t> evict_fram = std::nullopt;  // 记录最终驱逐的frame_id
   for (const auto &pair : node_store_) {
     if (pair.second.is_evictable_) {
       size_t ktime = GetNodeKTime(pair.second);
 
       if (ktime == UINT64_MAX) {  // 若ktime为inf,返回最早的最近访问frame
-        if (!has_inf) {           // 第一次遇到inf时，重置max_time,设置has_inf
-          max_time = 0;
+        if (!has_inf) {           // 第一次遇到inf时，重置minx_time,设置has_inf
+          min_time = UINT64_MAX;
           has_inf = true;
         }
-        size_t relative_time = current_timestamp_ - pair.second.history_.back();
-        if (relative_time > max_time) {
-          max_time = relative_time;
-          max_fram.emplace(pair.first);
+        size_t recent_time = pair.second.history_.back();
+        if (recent_time < min_time) {
+          min_time = recent_time;
+          evict_fram.emplace(pair.first);
         }
       }
 
-      if (!has_inf && ktime > max_time) {  // 若不存在inf，则正常记录最早的倒数第k_次访问frame
-        max_time = ktime;
-        max_fram.emplace(pair.first);
+      if (!has_inf && ktime < min_time) {  // 若不存在inf，则正常记录最早的倒数第k_次访问frame
+        min_time = ktime;
+        evict_fram.emplace(pair.first);
       }
     }
   }
   // 若驱逐frame,则删除对应记录
-  if (max_fram != std::nullopt) {
-    node_store_.erase(max_fram.value());
+  if (evict_fram != std::nullopt) {
+    node_store_.erase(evict_fram.value());
     curr_size_--;
   }
-  return max_fram;
+  return evict_fram;
 }
 
 void LRUKReplacer::RecordAccess(frame_id_t frame_id, [[maybe_unused]] AccessType access_type) {
@@ -97,8 +97,6 @@ void LRUKReplacer::Remove(frame_id_t frame_id) {
       node_store_.erase(find_frame);
       curr_size_--;
     }
-  } else {
-    BUSTUB_ASSERT(3, "Remove Error: frame_id not exist");
   }
 }
 
@@ -111,7 +109,7 @@ auto LRUKReplacer::GetNodeKTime(LRUKNode node) -> size_t {
   }
   // 否则返回倒数第k_次访问时间与当前时间的距离
   auto tem = std::next(node.history_.begin(), history_size - k_);
-  return current_timestamp_ - *tem;
+  return *tem;
 }
 
 }  // namespace bustub
