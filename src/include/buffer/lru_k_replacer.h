@@ -166,7 +166,7 @@ class LRUKReplacer {
    *
    * @return size_t
    */
-  auto GetNodeKTime(LRUKNode node) -> size_t;
+  auto GetNodeKTime(LRUKNode node) -> std::optional<size_t>;
 
   // Remove maybe_unused if you start using them.
   std::unordered_map<frame_id_t, LRUKNode> node_store_;

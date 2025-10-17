@@ -137,6 +137,7 @@ class ReadPageGuard : public IOPageGuard {
    * `std::shared_lock` type and use that for the latching mechanism instead of manually calling `lock` and
    `unlock`.
    */
+  std::shared_lock<std::shared_mutex> guard_lock;
 };
 
 /**
@@ -199,6 +200,7 @@ class WritePageGuard : public IOPageGuard {
    * `std::unique_lock` type and use that for the latching mechanism instead of manually calling `lock` and
    `unlock`.
    */
+  std::unique_lock<std::shared_mutex> guard_lock;
 };
 
 }  // namespace bustub

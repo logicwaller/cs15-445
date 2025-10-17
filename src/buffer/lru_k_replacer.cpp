@@ -24,22 +24,22 @@ auto LRUKReplacer::Evict() -> std::optional<frame_id_t> {
   std::optional<frame_id_t> evict_fram = std::nullopt;  // 记录最终驱逐的frame_id
   for (const auto &pair : node_store_) {
     if (pair.second.is_evictable_) {
-      size_t ktime = GetNodeKTime(pair.second);
+      std::optional<size_t> ktime = GetNodeKTime(pair.second);
 
-      if (ktime == UINT64_MAX) {  // 若ktime为inf,返回最早的最近访问frame
-        if (!has_inf) {           // 第一次遇到inf时，重置minx_time,设置has_inf
+      if (!ktime.has_value()) {  // 若ktime为inf,返回最早的最近访问frame
+        if (!has_inf) {          // 第一次遇到inf时，重置minx_time,设置has_inf
           min_time = UINT64_MAX;
           has_inf = true;
         }
-        size_t recent_time = pair.second.history_.back();
-        if (recent_time < min_time) {
+        size_t recent_time = pair.second.history_.front();
+        if (recent_time <= min_time) {
           min_time = recent_time;
           evict_fram.emplace(pair.first);
         }
       }
 
-      if (!has_inf && ktime < min_time) {  // 若不存在inf，则正常记录最早的倒数第k_次访问frame
-        min_time = ktime;
+      if (!has_inf && ktime.value() <= min_time) {  // 若不存在inf，则正常记录最早的倒数第k_次访问frame
+        min_time = ktime.value();
         evict_fram.emplace(pair.first);
       }
     }
@@ -102,10 +102,10 @@ void LRUKReplacer::Remove(frame_id_t frame_id) {
 
 auto LRUKReplacer::Size() -> size_t { return curr_size_; }
 
-auto LRUKReplacer::GetNodeKTime(LRUKNode node) -> size_t {
+auto LRUKReplacer::GetNodeKTime(LRUKNode node) -> std::optional<size_t> {
   size_t history_size = node.history_.size();
-  if (history_size < k_) {  // 若访问次数小于k_，返回inf
-    return UINT64_MAX;
+  if (history_size < k_) {  // 若访问次数小于k_，返回null
+    return std::nullopt;
   }
   // 否则返回倒数第k_次访问时间与当前时间的距离
   auto tem = std::next(node.history_.begin(), history_size - k_);
