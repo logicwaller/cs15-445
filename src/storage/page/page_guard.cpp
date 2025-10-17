@@ -153,14 +153,14 @@ auto ReadPageGuard::IsDirty() const -> bool {
  * TODO(P1): Add implementation.
  */
 void ReadPageGuard::Drop() {
-  if (is_valid_) {
-    frame_->pin_count_.fetch_sub(1);                     // pin_count--
-    if (frame_->pin_count_ == 0) {                       // TODO(logic):这里应该怎么设置
-      std::unique_lock<std::mutex> lock(*bpm_latch_);    // 利用bpm_latch保证replacer更改状态时线程安全
-      replacer_->SetEvictable(frame_->frame_id_, true);  // 将该frame设为可驱逐
-      frame_->rwlatch_.unlock_shared();                  // 释放读锁
-      is_valid_ = false;
-    }
+  if (!is_valid_) {
+    return;
+  }
+  frame_->rwlatch_.unlock_shared();                    // 释放读锁
+  if (frame_->pin_count_.fetch_sub(1) == 1) {          // 若pin_count减1前为1(即减1后为0)
+    std::unique_lock<std::mutex> lock(*bpm_latch_);    // 利用bpm_latch保证frame_、replacer更改状态时线程安全
+    replacer_->SetEvictable(frame_->frame_id_, true);  // 将该frame设为可驱逐
+    is_valid_ = false;
   }
 }
 
@@ -277,14 +277,14 @@ auto WritePageGuard::IsDirty() const -> bool {
  * TODO(P1): Add implementation.
  */
 void WritePageGuard::Drop() {
-  if (is_valid_) {
-    frame_->pin_count_.fetch_sub(1);
-    if (frame_->pin_count_ == 0) {                       // TODO(logic):这里怎么设置
-      std::unique_lock<std::mutex> lock(*bpm_latch_);    // 利用bpm_latch保证replacer更改状态时线程安全
-      replacer_->SetEvictable(frame_->frame_id_, true);  // 将该frame设为可驱逐
-      frame_->rwlatch_.unlock();                         // 释放写锁
-      is_valid_ = false;
-    }
+  if (!is_valid_) {
+    return;
+  }
+  frame_->rwlatch_.unlock();                           // 释放写锁
+  if (frame_->pin_count_.fetch_sub(1) == 1) {          // 若pin_count减1前为1(即减1后为0)
+    std::unique_lock<std::mutex> lock(*bpm_latch_);    // 利用bpm_latch保证frame_、replacer更改状态时线程安全
+    replacer_->SetEvictable(frame_->frame_id_, true);  // 将该frame设为可驱逐
+    is_valid_ = false;
   }
 }
 
