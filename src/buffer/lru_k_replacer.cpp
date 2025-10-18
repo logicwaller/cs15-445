@@ -18,9 +18,9 @@ namespace bustub {
 LRUKReplacer::LRUKReplacer(size_t num_frames, size_t k) : replacer_size_(num_frames), k_(k) {}
 
 auto LRUKReplacer::Evict() -> std::optional<frame_id_t> {
-  std::unique_lock<std::mutex> lock(latch_);  // 加锁,析构时自动释放
+  std::unique_lock<std::mutex> lock(latch_);
+  bool has_inf = false;  // 记录是否存在inf的frame(即访问次数小于k_的frame)
   size_t min_time = UINT64_MAX;
-  bool has_inf = false;                                 // 记录是否存在inf的frame(即访问次数小于k_的frame)
   std::optional<frame_id_t> evict_fram = std::nullopt;  // 记录最终驱逐的frame_id
   for (const auto &pair : node_store_) {
     if (pair.second.is_evictable_) {

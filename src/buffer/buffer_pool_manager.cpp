@@ -471,8 +471,7 @@ auto BufferPoolManager::GetPinCount(page_id_t page_id) -> std::optional<size_t> 
   if (find_frame == page_table_.end()) {  // 若page不存在于内存,直接返回nullopt
     return std::nullopt;
   }
-  std::shared_ptr<FrameHeader> frame = frames_[find_frame->second];
-  return frame->pin_count_;
+  return frames_[find_frame->second]->pin_count_.load();
 }
 
 }  // namespace bustub
