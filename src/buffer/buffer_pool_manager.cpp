@@ -218,17 +218,15 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
  * returns `std::nullopt`, otherwise returns a `WritePageGuard` ensuring exclusive and mutable access to a page's data.
  */
 auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_type) -> std::optional<WritePageGuard> {
-  std::unique_lock<std::mutex> lock(*bpm_latch_);
   std::optional<frame_id_t> frame_id = GetAvailableFrame(page_id, true, access_type);  // 获取可插入page的frame
   if (!frame_id.has_value()) {
     // 若不可插入page,返回nullopt
     return std::nullopt;
   }
   // 构造并返回writeguard
-  lock.unlock();
   WritePageGuard write_guard(page_id, frames_[frame_id.value()], replacer_, bpm_latch_);
-  lock.lock();
   /* 更新各个记录 */
+  std::unique_lock<std::mutex> lock(*bpm_latch_);  // 保证更改状态时线程安全
   // 更新frame
   frames_[frame_id.value()]->page_id_ = page_id;       // 更新frame内部page_id
   frames_[frame_id.value()]->pin_count_.fetch_add(1);  // 将该frame的pin_count++
@@ -265,17 +263,15 @@ auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_ty
  * returns `std::nullopt`, otherwise returns a `ReadPageGuard` ensuring shared and read-only access to a page's data.
  */
 auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_type) -> std::optional<ReadPageGuard> {
-  std::unique_lock<std::mutex> lock(*bpm_latch_);
   std::optional<frame_id_t> frame_id = GetAvailableFrame(page_id, false, access_type);  // 获取可插入page的frame
   if (!frame_id.has_value()) {
     // 若不可插入page,返回nullopt
     return std::nullopt;
   }
   // 构造并返回readguard
-  lock.unlock();
   ReadPageGuard read_guard(page_id, frames_[frame_id.value()], replacer_, bpm_latch_);
-  lock.lock();
   /* 更新各个记录 */
+  std::unique_lock<std::mutex> lock(*bpm_latch_);  // 保证更改状态时线程安全
   // 更新frame
   frames_[frame_id.value()]->page_id_ = page_id;       // 更新frame内部page_id
   frames_[frame_id.value()]->pin_count_.fetch_add(1);  // 将该frame的pin_count++
@@ -300,6 +296,7 @@ auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_typ
  */
 auto BufferPoolManager::GetAvailableFrame(page_id_t page_id, bool is_write, AccessType access_type)
     -> std::optional<frame_id_t> {
+  std::unique_lock<std::mutex> lock(*bpm_latch_);
   frame_id_t frame_id;
   auto find_page = page_table_.find(page_id);
   if (find_page != page_table_.end()) {  // case1:page存在于memory

@@ -72,7 +72,8 @@ auto IOPageGuard::operator=(IOPageGuard &&that) noexcept -> IOPageGuard & {
  */
 ReadPageGuard::ReadPageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> frame,
                              std::shared_ptr<LRUKReplacer> replacer, std::shared_ptr<std::mutex> bpm_latch)
-    : IOPageGuard(page_id, std::move(frame), std::move(replacer), std::move(bpm_latch)), guard_lock(frame_->rwlatch_) {}
+    : IOPageGuard(page_id, std::move(frame), std::move(replacer), std::move(bpm_latch)),
+      guard_lock_(frame_->rwlatch_) {}
 
 /**
  * @brief The move constructor for `ReadPageGuard`.
@@ -89,9 +90,8 @@ ReadPageGuard::ReadPageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> fra
  *
  * @param that The other page guard.
  */
-ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept : IOPageGuard(std::move(that)) {
-  guard_lock = std::move(that.guard_lock);
-}
+ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept
+    : IOPageGuard(std::move(that)), guard_lock_(std::move(that.guard_lock_)) {}
 
 /**
  * @brief The move assignment operator for `ReadPageGuard`.
@@ -114,8 +114,8 @@ auto ReadPageGuard::operator=(ReadPageGuard &&that) noexcept -> ReadPageGuard & 
   if (this != &that) {
     // 重置this原本内容
     this->Drop();
+    guard_lock_ = std::move(that.guard_lock_);
     IOPageGuard::operator=(std::move(that));
-    guard_lock = std::move(that.guard_lock);
   }
   return *this;
 }
@@ -159,12 +159,12 @@ void ReadPageGuard::Drop() {
   if (!is_valid_) {
     return;
   }
-  guard_lock.unlock();                                 // 释放读锁
-  std::unique_lock<std::mutex> lock(*bpm_latch_);      // 利用bpm_latch保证frame_、replacer更改状态时线程安全
+  guard_lock_.unlock();                                // 释放读锁
+  std::unique_lock<std::mutex> lock(*bpm_latch_);      // 利用bpm_latch保证pin_count、replacer更改状态时线程安全
   if (frame_->pin_count_.fetch_sub(1) == 1) {          // 若pin_count减1前为1(即减1后为0)
     replacer_->SetEvictable(frame_->frame_id_, true);  // 将该frame设为可驱逐
-    is_valid_ = false;
   }
+  is_valid_ = false;
 }
 
 /** @brief The destructor for `ReadPageGuard`. This destructor simply calls `Drop()`. */
@@ -188,7 +188,7 @@ ReadPageGuard::~ReadPageGuard() { Drop(); }
  */
 WritePageGuard::WritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> frame,
                                std::shared_ptr<LRUKReplacer> replacer, std::shared_ptr<std::mutex> bpm_latch)
-    : IOPageGuard(page_id, std::move(frame), std::move(replacer), std::move(bpm_latch)), guard_lock(frame_->rwlatch_) {
+    : IOPageGuard(page_id, std::move(frame), std::move(replacer), std::move(bpm_latch)), guard_lock_(frame_->rwlatch_) {
   // 写入时设置该frame为脏页
   frame_->is_dirty_ = true;
 }
@@ -208,9 +208,8 @@ WritePageGuard::WritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> f
  *
  * @param that The other page guard.
  */
-WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept : IOPageGuard(std::move(that)) {
-  guard_lock = std::move(that.guard_lock);
-}
+WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept
+    : IOPageGuard(std::move(that)), guard_lock_(std::move(that.guard_lock_)) {}
 
 /**
  * @brief The move assignment operator for `WritePageGuard`.
@@ -233,8 +232,8 @@ auto WritePageGuard::operator=(WritePageGuard &&that) noexcept -> WritePageGuard
   if (this != &that) {
     // 重置this原本内容
     this->Drop();
+    guard_lock_ = std::move(that.guard_lock_);
     IOPageGuard::operator=(std::move(that));
-    guard_lock = std::move(that.guard_lock);
   }
   return *this;
 }
@@ -286,12 +285,12 @@ void WritePageGuard::Drop() {
   if (!is_valid_) {
     return;
   }
-  guard_lock.unlock();                                 // 释放写锁
-  std::unique_lock<std::mutex> lock(*bpm_latch_);      // 利用bpm_latch保证frame_、replacer更改状态时线程安全
+  guard_lock_.unlock();                                // 释放写锁
+  std::unique_lock<std::mutex> lock(*bpm_latch_);      // 利用bpm_latch保证pin_count、replacer更改状态时线程安全
   if (frame_->pin_count_.fetch_sub(1) == 1) {          // 若pin_count减1前为1(即减1后为0)
     replacer_->SetEvictable(frame_->frame_id_, true);  // 将该frame设为可驱逐
-    is_valid_ = false;
   }
+  is_valid_ = false;
 }
 
 /** @brief The destructor for `WritePageGuard`. This destructor simply calls `Drop()`. */
