@@ -20,14 +20,14 @@ LRUKReplacer::LRUKReplacer(size_t num_frames, size_t k) : replacer_size_(num_fra
 auto LRUKReplacer::Evict() -> std::optional<frame_id_t> {
   std::unique_lock<std::mutex> lock(latch_);  // 加锁,析构时自动释放
   size_t min_time = UINT64_MAX;
-  bool has_inf = false;                                 // 记录是否存在inf的frame(即访问次数小于k_的frame)
+  bool has_inf = false;  // 记录是否存在inf的frame(即访问次数小于k_的frame)
   std::optional<frame_id_t> evict_fram = std::nullopt;  // 记录最终驱逐的frame_id
   for (const auto &pair : node_store_) {
     if (pair.second.is_evictable_) {
       std::optional<size_t> ktime = GetNodeKTime(pair.second);
 
       if (!ktime.has_value()) {  // 若ktime为inf,返回最早的最近访问frame
-        if (!has_inf) {          // 第一次遇到inf时，重置minx_time,设置has_inf
+        if (!has_inf) {  // 第一次遇到inf时，重置minx_time,设置has_inf
           min_time = UINT64_MAX;
           has_inf = true;
         }

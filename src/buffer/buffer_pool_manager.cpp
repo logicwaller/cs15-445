@@ -168,9 +168,9 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
 
     // 在memory中删除该page
     free_frames_.push_back(static_cast<int>(frame_id));  // 将该frame设为free
-    frame->Reset();                                      // reset该frame
-    page_table_.erase(find_page);                        // 在对应表中删除该page
-    replacer_->Remove(frame_id);                         // 在replacer去除该记录
+    frame->Reset();  // reset该frame
+    page_table_.erase(find_page);  // 在对应表中删除该page
+    replacer_->Remove(frame_id);  // 在replacer去除该记录
   }
 
   // 无论是否在缓冲池中，只要未pinned，都从disk中去除该page
@@ -228,7 +228,7 @@ auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_ty
   /* 更新各个记录 */
   std::unique_lock<std::mutex> lock(*bpm_latch_);  // 保证更改状态时线程安全
   // 更新frame
-  frames_[frame_id.value()]->page_id_ = page_id;       // 更新frame内部page_id
+  frames_[frame_id.value()]->page_id_ = page_id;  // 更新frame内部page_id
   frames_[frame_id.value()]->pin_count_.fetch_add(1);  // 将该frame的pin_count++
   // 更新page_table
   page_table_.insert_or_assign(page_id, frame_id.value());
@@ -273,7 +273,7 @@ auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_typ
   /* 更新各个记录 */
   std::unique_lock<std::mutex> lock(*bpm_latch_);  // 保证更改状态时线程安全
   // 更新frame
-  frames_[frame_id.value()]->page_id_ = page_id;       // 更新frame内部page_id
+  frames_[frame_id.value()]->page_id_ = page_id;  // 更新frame内部page_id
   frames_[frame_id.value()]->pin_count_.fetch_add(1);  // 将该frame的pin_count++
   // 更新page_table
   page_table_.insert_or_assign(page_id, frame_id.value());
@@ -302,7 +302,7 @@ auto BufferPoolManager::GetAvailableFrame(page_id_t page_id, bool is_write, Acce
   if (find_page != page_table_.end()) {  // case1:page存在于memory
     // frame_id直接指定为内存中的frame
     frame_id = find_page->second;
-  } else {                        // 当page不存在于memory，则需要从disk中获取
+  } else {  // 当page不存在于memory，则需要从disk中获取
     if (!free_frames_.empty()) {  // case2:page不存在于memory，但存在可用memory
       // 从free_frames中去除一个frame储存page
       frame_id = *free_frames_.begin();
@@ -312,7 +312,7 @@ auto BufferPoolManager::GetAvailableFrame(page_id_t page_id, bool is_write, Acce
       if (!evited_frame_id.has_value()) {  // 若无法驱逐，则说明无法插入内存，返回nullopt
         return std::nullopt;
       }
-      frame_id = evited_frame_id.value();                             // 记录用于储存page的frame
+      frame_id = evited_frame_id.value();  // 记录用于储存page的frame
       std::shared_ptr<FrameHeader> evited_frame = frames_[frame_id];  // 记录要驱逐的frame
       /* 若可以驱逐，则将evited_frame原内容驱除 */
       // 将evited_frame内的page写回disk

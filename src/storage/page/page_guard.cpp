@@ -159,12 +159,12 @@ void ReadPageGuard::Drop() {
   if (!is_valid_) {
     return;
   }
-  guard_lock_.unlock();                                // 释放读锁
-  std::unique_lock<std::mutex> lock(*bpm_latch_);      // 利用bpm_latch保证pin_count、replacer更改状态时线程安全
-  if (frame_->pin_count_.fetch_sub(1) == 1) {          // 若pin_count减1前为1(即减1后为0)
+  is_valid_ = false;
+  guard_lock_.unlock();  // 释放读锁
+  std::unique_lock<std::mutex> lock(*bpm_latch_);  // 利用bpm_latch保证pin_count、replacer更改状态时线程安全
+  if (frame_->pin_count_.fetch_sub(1) == 1) {  // 若pin_count减1前为1(即减1后为0)
     replacer_->SetEvictable(frame_->frame_id_, true);  // 将该frame设为可驱逐
   }
-  is_valid_ = false;
 }
 
 /** @brief The destructor for `ReadPageGuard`. This destructor simply calls `Drop()`. */
@@ -285,12 +285,12 @@ void WritePageGuard::Drop() {
   if (!is_valid_) {
     return;
   }
-  guard_lock_.unlock();                                // 释放写锁
-  std::unique_lock<std::mutex> lock(*bpm_latch_);      // 利用bpm_latch保证pin_count、replacer更改状态时线程安全
-  if (frame_->pin_count_.fetch_sub(1) == 1) {          // 若pin_count减1前为1(即减1后为0)
+  is_valid_ = false;
+  guard_lock_.unlock();  // 释放写锁
+  std::unique_lock<std::mutex> lock(*bpm_latch_);  // 利用bpm_latch保证pin_count、replacer更改状态时线程安全
+  if (frame_->pin_count_.fetch_sub(1) == 1) {  // 若pin_count减1前为1(即减1后为0)
     replacer_->SetEvictable(frame_->frame_id_, true);  // 将该frame设为可驱逐
   }
-  is_valid_ = false;
 }
 
 /** @brief The destructor for `WritePageGuard`. This destructor simply calls `Drop()`. */
