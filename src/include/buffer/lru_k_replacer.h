@@ -160,11 +160,11 @@ class LRUKReplacer {
   // TODO(student): implement me! You can replace these member variables as you like.
 
   /**
-   * @brief 返回LRUKNode的倒数第k次时间，若访问次数小于k返回inf
+   * @brief 返回LRUKNode的倒数第k次时间，若访问次数小于k返回std::nullopt
    *
    * @param node 待解析的node
    *
-   * @return size_t
+   * @return std::optinal<size_t>
    */
   auto GetNodeKTime(LRUKNode node) -> std::optional<size_t>;
 
