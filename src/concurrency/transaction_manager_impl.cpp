@@ -123,8 +123,8 @@ auto UpdateTupleAndUndoLink(
   return true;
 }
 
-auto GetTupleAndUndoLink(TransactionManager *txn_mgr, TableHeap *table_heap, RID rid)
-    -> std::tuple<TupleMeta, Tuple, std::optional<UndoLink>> {
+auto GetTupleAndUndoLink(TransactionManager *txn_mgr, TableHeap *table_heap,
+                         RID rid) -> std::tuple<TupleMeta, Tuple, std::optional<UndoLink>> {
   auto page_read_guard = table_heap->AcquireTablePageReadLock(rid);
   auto page = page_read_guard.As<TablePage>();
   auto [meta, tuple] = page->GetTuple(rid);

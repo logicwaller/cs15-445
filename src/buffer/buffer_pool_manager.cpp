@@ -225,14 +225,6 @@ auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_ty
   }
   // 构造并返回writeguard
   WritePageGuard write_guard(page_id, frames_[frame_id.value()], replacer_, bpm_latch_);
-  /* 更新各个记录 */
-  std::unique_lock<std::mutex> lock(*bpm_latch_);  // 保证更改状态时线程安全
-  // 更新frame
-  frames_[frame_id.value()]->page_id_ = page_id;       // 更新frame内部page_id
-  frames_[frame_id.value()]->pin_count_.fetch_add(1);  // 将该frame的pin_count++
-  // 更新replacer
-  replacer_->RecordAccess(frame_id.value(), access_type);  // 记录本次访问
-  replacer_->SetEvictable(frame_id.value(), false);
   return write_guard;
 }
 
@@ -268,14 +260,6 @@ auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_typ
   }
   // 构造并返回readguard
   ReadPageGuard read_guard(page_id, frames_[frame_id.value()], replacer_, bpm_latch_);
-  /* 更新各个记录 */
-  std::unique_lock<std::mutex> lock(*bpm_latch_);  // 保证更改状态时线程安全
-  // 更新frame
-  frames_[frame_id.value()]->page_id_ = page_id;       // 更新frame内部page_id
-  frames_[frame_id.value()]->pin_count_.fetch_add(1);  // 将该frame的pin_count++
-  // 更新replacer
-  replacer_->RecordAccess(frame_id.value(), access_type);  // 记录本次访问
-  replacer_->SetEvictable(frame_id.value(), false);
   return read_guard;
 }
 
@@ -290,8 +274,8 @@ auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_typ
  *
  * @return 若可插入page,返回frame_id;否则返回nullopt
  */
-auto BufferPoolManager::GetAvailableFrame(page_id_t page_id, bool is_write, AccessType access_type)
-    -> std::optional<frame_id_t> {
+auto BufferPoolManager::GetAvailableFrame(page_id_t page_id, bool is_write,
+                                          AccessType access_type) -> std::optional<frame_id_t> {
   std::unique_lock<std::mutex> lock(*bpm_latch_);
   frame_id_t frame_id;
   auto find_page = page_table_.find(page_id);
@@ -334,6 +318,12 @@ auto BufferPoolManager::GetAvailableFrame(page_id_t page_id, bool is_write, Acce
     page_table_.insert_or_assign(page_id, frame_id);
   }
 
+  // 更新replacer
+  replacer_->RecordAccess(frame_id, access_type);  // 记录本次访问
+  replacer_->SetEvictable(frame_id, false);
+  // 更新frame
+  frames_[frame_id]->page_id_ = page_id;       // 更新frame内部page_id
+  frames_[frame_id]->pin_count_.fetch_add(1);  // 将该frame的pin_count++
   return frame_id;
 }
 
