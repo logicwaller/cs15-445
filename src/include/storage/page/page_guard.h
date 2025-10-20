@@ -31,6 +31,7 @@ class IOPageGuard {
   auto operator=(const IOPageGuard &) -> IOPageGuard & = delete;
   IOPageGuard(IOPageGuard &&that) noexcept;
   auto operator=(IOPageGuard &&that) noexcept -> IOPageGuard &;
+  void Drop();
   virtual ~IOPageGuard() = default;
 
  protected:

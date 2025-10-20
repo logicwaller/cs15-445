@@ -219,20 +219,13 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
  * returns `std::nullopt`, otherwise returns a `WritePageGuard` ensuring exclusive and mutable access to a page's data.
  */
 auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_type) -> std::optional<WritePageGuard> {
-  std::optional<frame_id_t> frame_id = GetAvailableFrame(page_id, true, access_type);  // 获取可插入page的frame
+  std::optional<frame_id_t> frame_id = GetAvailableFrame(page_id, access_type);  // 获取可插入page的frame
   if (!frame_id.has_value()) {
     // 若不可插入page,返回nullopt
     return std::nullopt;
   }
   // 构造并返回writeguard
   WritePageGuard write_guard(page_id, frames_[frame_id.value()], replacer_, bpm_latch_);
-  // std::unique_lock<std::mutex> lock(*bpm_latch_);
-  // // 更新frame
-  // frames_[frame_id.value()]->page_id_ = page_id;       // 更新frame内部page_id
-  // frames_[frame_id.value()]->pin_count_.fetch_add(1);  // 将该frame的pin_count++
-  // // 更新replacer
-  // replacer_->RecordAccess(frame_id.value(), access_type);  // 记录本次访问
-  // replacer_->SetEvictable(frame_id.value(), false);
   return write_guard;
 }
 
@@ -261,36 +254,26 @@ auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_ty
  * returns `std::nullopt`, otherwise returns a `ReadPageGuard` ensuring shared and read-only access to a page's data.
  */
 auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_type) -> std::optional<ReadPageGuard> {
-  std::optional<frame_id_t> frame_id = GetAvailableFrame(page_id, false, access_type);  // 获取可插入page的frame
+  std::optional<frame_id_t> frame_id = GetAvailableFrame(page_id, access_type);  // 获取可插入page的frame
   if (!frame_id.has_value()) {
     // 若不可插入page,返回nullopt
     return std::nullopt;
   }
   // 构造并返回readguard
   ReadPageGuard read_guard(page_id, frames_[frame_id.value()], replacer_, bpm_latch_);
-  // std::unique_lock<std::mutex> lock(*bpm_latch_);
-  // // 更新frame
-  // frames_[frame_id.value()]->page_id_ = page_id;       // 更新frame内部page_id
-  // frames_[frame_id.value()]->pin_count_.fetch_add(1);  // 将该frame的pin_count++
-  // // 更新replacer
-  // replacer_->RecordAccess(frame_id.value(), access_type);  // 记录本次访问
-  // replacer_->SetEvictable(frame_id.value(), false);
   return read_guard;
 }
 
 /**
  * @brief 返回可插入指定page的frame;若通过驱逐获得的frame,则处理原frame内容;若无法将page插入内存,返回nullopt
  *        若从disk中获取page，则读取disk中相应数据到memory中
- *        若write模式,则设置lock();若read模式,则设置lock_shared()
  *
  * @param page_id The ID of the page we want to access.
- * @param is_write write/read模式
  * @param lock 获取frame的锁
  *
  * @return 若可插入page,返回frame_id;否则返回nullopt
  */
-auto BufferPoolManager::GetAvailableFrame(page_id_t page_id, bool is_write, AccessType access_type)
-    -> std::optional<frame_id_t> {
+auto BufferPoolManager::GetAvailableFrame(page_id_t page_id, AccessType access_type) -> std::optional<frame_id_t> {
   std::unique_lock<std::mutex> lock(*bpm_latch_);
   frame_id_t frame_id;
   auto find_page = page_table_.find(page_id);
@@ -313,7 +296,7 @@ auto BufferPoolManager::GetAvailableFrame(page_id_t page_id, bool is_write, Acce
       // 将evited_frame内的page写回disk
       DiskAccess(evited_frame->page_id_.value(), true);
       // 将页表中对应记录删除
-      if (evited_frame->page_id_.has_value()) {  // 清除page_table中的对应
+      if (evited_frame->page_id_.has_value()) {
         auto find_evited_page = page_table_.find(evited_frame->page_id_.value());
         if (find_evited_page != page_table_.end()) {
           page_table_.erase(find_evited_page);
@@ -410,11 +393,9 @@ auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
     std::shared_ptr<FrameHeader> frame = frames_[find_frame->second];
     if (frame->is_dirty_) {  // 只有脏页时写回disk
       DiskAccess(page_id, true);
-      frame->is_dirty_ = false;  // flush该页后该页不是脏页
     }
     return true;
   }
-
   // 若该页不存在于memory,返回false
   return false;
 }
@@ -485,6 +466,10 @@ void BufferPoolManager::DiskAccess(page_id_t page_id, bool is_write) {
   disk_scheduler_->Schedule(std::move(request));
   // 阻塞等待disk_scheduler完成操作
   future.get();
+  // 若write,则更新is_dirty_
+  if (is_write) {
+    frame->is_dirty_ = false;  // 写回该页后该页不是脏页
+  }
 }
 
 }  // namespace bustub

@@ -140,7 +140,7 @@ class BufferPoolManager {
    * @brief The latch protecting the buffer pool's inner data structures.
    *
    * TODO(P1) We recommend replacing this comment with details about what this latch actually protects.
-   * 保护page_table，free_frames_更改时线程安全
+   * 保护page_table,free_frames_,replacer_,frame更改时线程安全
    */
   std::shared_ptr<std::mutex> bpm_latch_;
 
@@ -175,7 +175,7 @@ class BufferPoolManager {
    * stored inside of it. Additionally, you may also want to implement a helper function that returns either a shared
    * pointer to a `FrameHeader` that already has a page's data stored inside of it, or an index to said `FrameHeader`.
    */
-  auto GetAvailableFrame(page_id_t page_id, bool is_write, AccessType access_type) -> std::optional<frame_id_t>;
+  auto GetAvailableFrame(page_id_t page_id, AccessType access_type) -> std::optional<frame_id_t>;
   void DiskAccess(page_id_t page_id, bool is_write);
 };
 }  // namespace bustub

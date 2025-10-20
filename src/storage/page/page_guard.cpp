@@ -36,6 +36,7 @@ IOPageGuard::IOPageGuard(IOPageGuard &&that) noexcept
 }
 
 auto IOPageGuard::operator=(IOPageGuard &&that) noexcept -> IOPageGuard & {
+  // Drop操作在子类执行，否则会调用父类的Drop
   if (this != &that) {  // 只有当this与that不是同一个值时需要操作
     // 复制that的内容
     page_id_ = that.page_id_;
@@ -50,6 +51,17 @@ auto IOPageGuard::operator=(IOPageGuard &&that) noexcept -> IOPageGuard & {
     that.is_valid_ = false;
   }
   return *this;
+}
+
+void IOPageGuard::Drop() {
+  if (!is_valid_) {
+    return;
+  }
+  is_valid_ = false;
+  std::unique_lock<std::mutex> lock(*bpm_latch_);  // 利用bpm_latch保证pin_count、replacer更改状态时线程安全
+  if (frame_->pin_count_.fetch_sub(1) == 1) {
+    replacer_->SetEvictable(frame_->frame_id_, true);  // 将该frame设为可驱逐
+  }
 }
 
 /**********************************************************************************************************************/
@@ -154,15 +166,10 @@ auto ReadPageGuard::IsDirty() const -> bool {
  * TODO(P1): Add implementation.
  */
 void ReadPageGuard::Drop() {
-  if (!is_valid_) {
-    return;
+  if (is_valid_) {
+    IOPageGuard::Drop();
+    guard_lock_.unlock();  // 释放写锁
   }
-  is_valid_ = false;
-  std::unique_lock<std::mutex> lock(*bpm_latch_);  // 利用bpm_latch保证pin_count、replacer更改状态时线程安全
-  if (frame_->pin_count_.fetch_sub(1) == 1) {
-    replacer_->SetEvictable(frame_->frame_id_, true);  // 将该frame设为可驱逐
-  }
-  guard_lock_.unlock();  // 释放读锁
 }
 
 /** @brief The destructor for `ReadPageGuard`. This destructor simply calls `Drop()`. */
@@ -279,15 +286,10 @@ auto WritePageGuard::IsDirty() const -> bool {
  * TODO(P1): Add implementation.
  */
 void WritePageGuard::Drop() {
-  if (!is_valid_) {
-    return;
+  if (is_valid_) {
+    IOPageGuard::Drop();
+    guard_lock_.unlock();  // 释放写锁
   }
-  is_valid_ = false;
-  std::unique_lock<std::mutex> lock(*bpm_latch_);  // 利用bpm_latch保证pin_count、replacer更改状态时线程安全
-  if (frame_->pin_count_.fetch_sub(1) == 1) {
-    replacer_->SetEvictable(frame_->frame_id_, true);  // 将该frame设为可驱逐
-  }
-  guard_lock_.unlock();  // 释放写锁
 }
 
 /** @brief The destructor for `WritePageGuard`. This destructor simply calls `Drop()`. */
