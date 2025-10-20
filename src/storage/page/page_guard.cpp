@@ -22,13 +22,12 @@ IOPageGuard::IOPageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> frame, 
   is_valid_ = true;  // 初始化后is_valid设为true
 }
 
-IOPageGuard::IOPageGuard(IOPageGuard &&that) noexcept {
-  // 复制that的内容
-  page_id_ = that.page_id_;
-  frame_ = std::move(that.frame_);
-  replacer_ = std::move(that.replacer_);
-  bpm_latch_ = std::move(that.bpm_latch_);
-  is_valid_ = true;
+IOPageGuard::IOPageGuard(IOPageGuard &&that) noexcept
+    : page_id_(that.page_id_),
+      frame_(std::move(that.frame_)),
+      replacer_(std::move(that.replacer_)),
+      bpm_latch_(std::move(that.bpm_latch_)),
+      is_valid_(that.is_valid_) {
   // 重设that的内容，防止double free
   that.frame_ = nullptr;
   that.replacer_ = nullptr;
@@ -43,7 +42,7 @@ auto IOPageGuard::operator=(IOPageGuard &&that) noexcept -> IOPageGuard & {
     frame_ = std::move(that.frame_);
     replacer_ = std::move(that.replacer_);
     bpm_latch_ = std::move(that.bpm_latch_);
-    is_valid_ = true;
+    is_valid_ = that.is_valid_;
     // 重设that的内容，防止double free
     that.frame_ = nullptr;
     that.replacer_ = nullptr;

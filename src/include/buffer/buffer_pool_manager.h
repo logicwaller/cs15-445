@@ -120,8 +120,8 @@ class BufferPoolManager {
   auto Size() const -> size_t;
   auto NewPage() -> page_id_t;
   auto DeletePage(page_id_t page_id) -> bool;
-  auto CheckedWritePage(page_id_t page_id,
-                        AccessType access_type = AccessType::Unknown) -> std::optional<WritePageGuard>;
+  auto CheckedWritePage(page_id_t page_id, AccessType access_type = AccessType::Unknown)
+      -> std::optional<WritePageGuard>;
   auto CheckedReadPage(page_id_t page_id, AccessType access_type = AccessType::Unknown) -> std::optional<ReadPageGuard>;
   auto WritePage(page_id_t page_id, AccessType access_type = AccessType::Unknown) -> WritePageGuard;
   auto ReadPage(page_id_t page_id, AccessType access_type = AccessType::Unknown) -> ReadPageGuard;
@@ -176,5 +176,6 @@ class BufferPoolManager {
    * pointer to a `FrameHeader` that already has a page's data stored inside of it, or an index to said `FrameHeader`.
    */
   auto GetAvailableFrame(page_id_t page_id, bool is_write, AccessType access_type) -> std::optional<frame_id_t>;
+  void DiskAccess(page_id_t page_id, bool is_write);
 };
 }  // namespace bustub
