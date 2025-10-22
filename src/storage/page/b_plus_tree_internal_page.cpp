@@ -26,7 +26,7 @@ namespace bustub {
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Init(int max_size) {
   SetPageType(IndexPageType::INTERNAL_PAGE);  // 设置page_type_
-  SetSize(0);                                 // 设置size_=0
+  SetSize(1);                                 // 设置size_=1(key_array的第一个值为空)
   SetMaxSize(max_size);                       // 设置max_size_
 }
 

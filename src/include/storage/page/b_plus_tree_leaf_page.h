@@ -65,6 +65,10 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   void SetNextPageId(page_id_t next_page_id);
   auto KeyAt(int index) const -> KeyType;
 
+  // 辅助函数
+  auto ValueAt(int index) const -> ValueType;
+  void InsertPairAt(int index, const KeyType &key, const ValueType &value);
+
   /**
    * @brief For test only return a string representing all keys in
    * this leaf page formatted as "(key1,key2,key3,...)"

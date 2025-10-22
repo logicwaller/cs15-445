@@ -49,6 +49,28 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::SetNextPageId(page_id_t next_page_id) { next_pa
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::KeyAt(int index) const -> KeyType { return key_array_[index]; }
 
+/*
+ * 返回index处的value
+ */
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::ValueAt(int index) const -> ValueType { return rid_array_[index]; }
+
+/*
+ * 在index处插入键值对(key,value),将后续的键值对后移
+ */
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::InsertPairAt(int index, const KeyType &key, const ValueType &value) {
+  // 将index后的键值对后移
+  int size = GetSize();
+  for (int i = size; i > index; i--) {
+    key_array_[i] = key_array_[i - 1];
+    rid_array_[i] = rid_array_[i - 1];
+  }
+  // 在index处插入键值对
+  key_array_[index] = key;
+  rid_array_[index] = value;
+}
+
 template class BPlusTreeLeafPage<GenericKey<4>, RID, GenericComparator<4>>;
 template class BPlusTreeLeafPage<GenericKey<8>, RID, GenericComparator<8>>;
 template class BPlusTreeLeafPage<GenericKey<16>, RID, GenericComparator<16>>;
