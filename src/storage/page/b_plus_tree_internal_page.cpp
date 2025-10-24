@@ -47,6 +47,35 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetKeyAt(int index, const KeyType &key) { k
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::ValueAt(int index) const -> ValueType { return page_id_array_[index]; }
 
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertPairAt(int index, const KeyType &key, const ValueType &value) {
+  // 将index后的键值对后移
+  int size = GetSize();
+  for (int i = size; i > index; i--) {
+    key_array_[i] = key_array_[i - 1];
+    page_id_array_[i] = page_id_array_[i - 1];
+  }
+  // 在index处插入键值对
+  key_array_[index] = key;
+  page_id_array_[index] = value;
+  ChangeSizeBy(1);  // 插入后size++
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetValueAt(int index, const ValueType &value) { page_id_array_[index] = value; }
+
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::MoveHalfPairTo(BPlusTreeInternalPage *another_page) -> KeyType {
+  int half_size = GetMinSize();
+  int size = GetSize();
+  for (int i = 1; i < size - half_size; i++) {
+    another_page->InsertPairAt(i, KeyAt(half_size + 1), ValueAt(half_size + 1));
+  }
+  KeyType res = KeyAt(half_size);
+  ChangeSizeBy(-(size - half_size));  // this减少了size - half_size的键值对
+  return res;
+}
+
 // valuetype for internalNode should be page id_t
 template class BPlusTreeInternalPage<GenericKey<4>, page_id_t, GenericComparator<4>>;
 template class BPlusTreeInternalPage<GenericKey<8>, page_id_t, GenericComparator<8>>;

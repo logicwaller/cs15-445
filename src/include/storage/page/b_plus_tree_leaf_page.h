@@ -68,6 +68,8 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   // 辅助函数
   auto ValueAt(int index) const -> ValueType;
   void InsertPairAt(int index, const KeyType &key, const ValueType &value);
+  void RemovePairAt(int index);
+  void MoveHalfPairTo(BPlusTreeLeafPage *another_page);
 
   /**
    * @brief For test only return a string representing all keys in

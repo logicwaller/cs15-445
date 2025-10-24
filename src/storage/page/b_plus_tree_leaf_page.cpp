@@ -69,6 +69,34 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::InsertPairAt(int index, const KeyType &key, con
   // 在index处插入键值对
   key_array_[index] = key;
   rid_array_[index] = value;
+  ChangeSizeBy(1);  // 插入后size++
+}
+
+/*
+ * 在index处删除键值对,将后续的键值对前移
+ */
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::RemovePairAt(int index) {
+  int size = GetSize();
+  for (int i = index; i < size - 1; i++) {  // 不用更新最后一个值
+    key_array_[i] = key_array_[i + 1];
+    rid_array_[i] = rid_array_[i + 1];
+  }
+  ChangeSizeBy(-1);  // 删除后size--
+}
+
+/*
+ * 将本page键值对的[minsize, size)移动到another_page键值对的[0, size-half_size-1]
+ * 注：another_page必须没有键值对
+ */
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveHalfPairTo(BPlusTreeLeafPage *another_page) {
+  int half_size = GetMinSize();
+  int size = GetSize();
+  for (int i = 0; i < size - half_size; i++) {
+    another_page->InsertPairAt(i, KeyAt(half_size), ValueAt(half_size));
+  }
+  ChangeSizeBy(-(size - half_size));  // this减少了size - half_size的键值对
 }
 
 template class BPlusTreeLeafPage<GenericKey<4>, RID, GenericComparator<4>>;

@@ -80,6 +80,26 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   auto ValueAt(int index) const -> ValueType;
 
   /**
+   *   @brief 在index处插入键值对，将后续键值对后移
+   */
+  void InsertPairAt(int index, const KeyType &key, const ValueType &value);
+
+  /**
+   *   @brief 在index处改变value
+   */
+  void SetValueAt(int index, const ValueType &value);
+
+  /**
+   *   @brief  将本page键值对的[minsize + 1, size)移动到another_page键值对的[1, size-half_size-1]
+   *           本page键值对的第minsize项的value设置为another_page的第0项值
+   *           删除本page的[minsize, size)的键值对
+   *           注：another_page必须没有键值对
+   *
+   *   @return 返回本page第minsize项的key
+   */
+  auto MoveHalfPairTo(BPlusTreeInternalPage *another_page) -> KeyType;
+
+  /**
    * @brief For test only, return a string representing all keys in
    * this internal page, formatted as "(key1,key2,key3,...)"
    *

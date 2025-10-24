@@ -142,11 +142,22 @@ class BPlusTree {
   auto ToPrintableBPlusTree(page_id_t root_id) -> PrintableBPlusTree;
 
   /* 辅助函数 */
+
   // 二分查找
   template <typename PageType>
   auto KeyBinarySearch(const PageType *page, const KeyType &key) const -> int;
   // 查找key应在的leafpage
-  auto FindLeafPage(const KeyType &key, Context &ctx) const -> page_id_t;
+  auto FindLeafPage(const KeyType &key, Context &ctx) const -> std::deque<int>;
+
+  /* 分裂部分 */
+  // 分裂leafpage
+  void SplitLeafPage(std::deque<int> &ancestor_page_id);
+  // 向leafpage的父页进行插入(SplitLeafPage的辅助函数)
+  void InsertPairToInternalPage(std::deque<int> &ancestor_page_id, const KeyType &key, const page_id_t &value,
+                                const page_id_t &lvalue = 0);
+
+  /*合并部分*/
+  void MergeLeafPage(std::deque<int> &ancestor_page_id);
 
   // member variable
   std::string index_name_;
