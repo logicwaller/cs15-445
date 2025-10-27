@@ -48,7 +48,7 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
   }
   // 获取该key应该存在的page_id
   std::deque<int> find_ids = FindLeafPage(key, ctx);
-  ReadPageGuard leaf_page_guard = bpm_->ReadPage(*find_ids.end());
+  ReadPageGuard leaf_page_guard = bpm_->ReadPage(find_ids.back());
   // 查找key是否在该leafpage中
   auto leaf_page = leaf_page_guard.As<LeafPage>();
   int find_index = KeyBinarySearch(leaf_page, key);
@@ -91,7 +91,7 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value) -> bool 
 
   // 获取key应在的leafpage
   std::deque<int> find_ids = FindLeafPage(key, ctx);
-  WritePageGuard leaf_page_guard = bpm_->WritePage(*find_ids.end());
+  WritePageGuard leaf_page_guard = bpm_->WritePage(find_ids.back());
   // 向leafpage插入键值对
   auto leaf_page = leaf_page_guard.AsMut<LeafPage>();
   int insert_id = KeyBinarySearch(leaf_page, key);           // 获取应插入的index
@@ -128,7 +128,7 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key) {
 
   // 查找key应在的leafpage
   std::deque<int> find_ids = FindLeafPage(key, ctx);
-  WritePageGuard leaf_page_guard = bpm_->WritePage(*find_ids.end());
+  WritePageGuard leaf_page_guard = bpm_->WritePage(find_ids.back());
   auto leaf_page = leaf_page_guard.AsMut<LeafPage>();
   // 查找key是否存在于该leafpage
   int find_index = KeyBinarySearch(leaf_page, key);
@@ -141,8 +141,7 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key) {
 
   // 向leaf_page删除后若小于minsize则进行合并
   if (leaf_page->GetSize() < leaf_page->GetMinSize()) {
-    // TODO:进行合并
-    MergeLeafPage(find_ids);
+    MergePage<LeafPage>(find_ids);
   }
 }
 
@@ -188,9 +187,9 @@ auto BPLUSTREE_TYPE::GetRootPageId() -> page_id_t {
  *****************************************************************************/
 
 /**
- * @brief 在page内的key_array进行二分查找key
- *        在internalpage内查找index,使key_array[index] <= key < key_array[index + 1];若key<key_array[1]则返回0】
- *        在leafpage内查找index,若完全匹配则返回匹配值,否则返回index使key_array[index - 1] < key < key_array[index]
+ * @brief 在page内的key_array进行二分查找key。
+ *        在internalpage内查找index,使key_array[index] <= key < key_array[index + 1];若key<key_array[1]则返回0。
+ *        在leafpage内查找index,若完全匹配则返回匹配值,否则返回index使key_array[index - 1] < key < key_array[index]。
  *        即两种page的所需算法大体一致，但不完全匹配时，leaf所需index=internal所需index + 1
  */
 INDEX_TEMPLATE_ARGUMENTS
@@ -216,6 +215,7 @@ auto BPLUSTREE_TYPE::KeyBinarySearch(const PageType *page, const KeyType &key) c
       return mid_index;  // 完全匹配时，直接返回该值
     }
   }
+
   // 不完全匹配时，进行处理;此时left = right + 1,且key_array[right] < key < key_array[left]
   if (page->IsLeafPage()) {  // 若为leafpage
     return left;
@@ -257,23 +257,42 @@ auto BPLUSTREE_TYPE::FindLeafPage(const KeyType &key, Context &ctx) const -> std
 }
 
 /**
+ * @brief 获取给定page_id的page的size;is_leaf表示该page是否为leafpage
+ */
+INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::GetPageSizeById(const int page_id, bool is_leaf) const -> int {
+  ReadPageGuard guard = bpm_->ReadPage(page_id);
+  if (is_leaf) {
+    auto page = guard.As<LeafPage>();
+    return page->GetSize();
+  } else {
+    auto page = guard.As<InternalPage>();
+    return page->GetSize();
+  }
+}
+
+/**
  * @brief 分裂leafpage,即ancestor_page_id的最后一项,向父页插入新节点
  */
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::SplitLeafPage(std::deque<int> &ancestor_page_id) {
   // 读取要被分裂的leafpage
-  page_id_t old_leaf_page_id = *ancestor_page_id.end();
+  page_id_t old_leaf_page_id = ancestor_page_id.back();
   WritePageGuard old_leaf_page_guard = bpm_->WritePage(old_leaf_page_id);
   auto old_leaf_page = old_leaf_page_guard.AsMut<LeafPage>();
+
   // 初始化新页
   page_id_t new_leaf_page_id = bpm_->NewPage();
   WritePageGuard new_leaf_page_guard = bpm_->WritePage(new_leaf_page_id);
   auto new_leaf_page = new_leaf_page_guard.AsMut<LeafPage>();
   new_leaf_page->Init();
+
   // 将old_leaf_page一半以后的数据剪切到new_leaf_page
-  old_leaf_page->MoveHalfPairTo(new_leaf_page);
+  old_leaf_page->SplitHalfPairTo(new_leaf_page);
+
   // 获取新产生的节点的key
-  KeyType new_key = new_leaf_page->KeyAt(0);  // new_leaf_page的第一项即为新添key
+  KeyType new_key = new_leaf_page->KeyAt(0);  // new_leaf_page的第一项即为插入父页的key
+
   // 向leaf_page的父页进行插入
   if (!ancestor_page_id.empty()) {
     InsertPairToInternalPage(ancestor_page_id, new_key, new_leaf_page_id);
@@ -289,14 +308,14 @@ void BPLUSTREE_TYPE::SplitLeafPage(std::deque<int> &ancestor_page_id) {
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::InsertPairToInternalPage(std::deque<int> &ancestor_page_id, const KeyType &key,
                                               const page_id_t &value, const page_id_t &lvalue) {
-  // 获取父页
-  page_id_t parent_page_id;
-  WritePageGuard parent_page_guard;
+  /* 获取当前页 */
+  page_id_t now_page_id;
+  WritePageGuard now_page_guard;
   if (ancestor_page_id.empty()) {  // 若无ancestor，则说明需要在根页添加新的一层
     //  初始化新的root_page
     page_id_t new_root_page_id = bpm_->NewPage();
-    parent_page_guard = bpm_->WritePage(new_root_page_id);
-    auto new_root_page = parent_page_guard.AsMut<InternalPage>();
+    now_page_guard = bpm_->WritePage(new_root_page_id);
+    auto new_root_page = now_page_guard.AsMut<InternalPage>();
     new_root_page->Init();
     // 更新root_page_id
     WritePageGuard head_page_guard = bpm_->WritePage(header_page_id_);
@@ -306,39 +325,101 @@ void BPLUSTREE_TYPE::InsertPairToInternalPage(std::deque<int> &ancestor_page_id,
     new_root_page->InsertPairAt(1, key, value);
     new_root_page->SetValueAt(0, lvalue);  // 在0处设置lvalue
   } else {                                 // 否则获取ancestor最后一项
-    parent_page_id = *ancestor_page_id.end();
-    parent_page_guard = bpm_->WritePage(parent_page_id);
+    now_page_id = ancestor_page_id.back();
+    now_page_guard = bpm_->WritePage(now_page_id);
     ancestor_page_id.pop_back();  // 将最后一项去除
   }
 
-  // 判断父页是否需要分裂
-  auto parent_page = parent_page_guard.AsMut<InternalPage>();
-  if (parent_page->GetSize() == parent_page->GetMaxSize()) {  // 达到maxsize，需要递归分裂
+  /* 判断当前页是否需要分裂 */
+  auto now_page = now_page_guard.AsMut<InternalPage>();
+  if (now_page->GetSize() == now_page->GetMaxSize()) {  // 达到maxsize，需要递归分裂
     // 创建新页
     page_id_t new_page_id = bpm_->NewPage();
     WritePageGuard new_page_guard = bpm_->WritePage(new_page_id);
     auto new_page = new_page_guard.AsMut<InternalPage>();
     new_page->Init();
     // 将旧页一半以后的内容粘贴到新页
-    KeyType new_key = parent_page->MoveHalfPairTo(new_page);  // 返回值为插入父页的key
+    KeyType new_key = now_page->SplitHalfPairTo(new_page);  // 返回值为插入下一级父页的key
     // 检查下次递归时是否需要传递lvalue
-    if (ancestor_page_id.empty()) {  // 若为空，则需要传递parent_pair_id作为lvalue
-      InsertPairToInternalPage(ancestor_page_id, new_key, new_page_id, parent_page_id);
+    if (ancestor_page_id.empty()) {  // 若无ancestor，则需要传递now_page_id作为lvalue
+      InsertPairToInternalPage(ancestor_page_id, new_key, new_page_id, now_page_id);
     } else {
       InsertPairToInternalPage(ancestor_page_id, new_key, new_page_id);
     }
   }
 
-  // 分裂完成后进行插入
-  int insert_index = KeyBinarySearch(parent_page, key) + 1;  // 插入位置为internalpage查找位置+1
-  parent_page->InsertPairAt(insert_index, key, value);
+  /* 分裂完成后进行插入 */
+  int insert_index = KeyBinarySearch(now_page, key) + 1;  // 插入位置为internalpage查找位置+1
+  now_page->InsertPairAt(insert_index, key, value);
 }
 
 /**
- * @brief 合并leafpage
+ * @brief 合并ancestor_page_id的最后一项对应的页,从父页删除或修改一项键值对
+ * @param PageType 表示待合并的页是leaf_page或internal_page
  */
 INDEX_TEMPLATE_ARGUMENTS
-void BPLUSTREE_TYPE::MergeLeafPage(std::deque<int> &ancestor_page_id) {}
+template <typename PageType>
+void BPLUSTREE_TYPE::MergePage(std::deque<int> &ancestor_page_id) {
+  /* 获取now_page */
+  int now_page_id = ancestor_page_id.back();
+  ancestor_page_id.pop_back();           // 去除ancestor_page_id的最后一项
+  if (GetRootPageId() == now_page_id) {  // 若now_page为根页，则无需合并，直接结束
+    return;
+  }
+  WritePageGuard now_page_guard = bpm_->WritePage(now_page_id);
+  auto now_page = now_page_guard.AsMut<PageType>();
+
+  /* 获取待合并的另一个now_page */
+  // 获取父页
+  int parent_page_id = ancestor_page_id.back();
+  WritePageGuard parent_page_guard = bpm_->WritePage(parent_page_id);
+  auto parent_page = parent_page_guard.AsMut<InternalPage>();
+  // 获取now_page的左右兄弟页,取size较大的进行merge
+  int find_index = KeyBinarySearch(parent_page, now_page->KeyAt(0));
+  int merge_leaf_page_id;  // 记录进行merge的page_id
+  bool is_right_sibling;   // 记录获取的是否为右兄弟
+  if (find_index == 0) {   // 若find_index为0，直接使用右兄弟
+    merge_leaf_page_id = parent_page->ValueAt(find_index + 1);
+    is_right_sibling = true;
+  } else if (find_index == parent_page->GetSize() - 1) {  // 若find_index为最后一项，直接用左兄弟
+    merge_leaf_page_id = parent_page->ValueAt(find_index - 1);
+    is_right_sibling = false;
+  } else {  // 否则取左右兄弟size较大的一个
+    if (GetPageSizeById(parent_page->ValueAt(find_index - 1), true) >
+        GetPageSizeById(parent_page->ValueAt(find_index + 1), true)) {
+      merge_leaf_page_id = parent_page->ValueAt(find_index - 1);
+      is_right_sibling = false;
+    } else {
+      merge_leaf_page_id = parent_page->ValueAt(find_index + 1);
+      is_right_sibling = true;
+    }
+  }
+  // 获取merge_leaf_page
+  WritePageGuard merge_leaf_page_guard = bpm_->WritePage(merge_leaf_page_id);
+  auto merge_leaf_page = merge_leaf_page_guard.AsMut<PageType>();
+
+  /* 进行merge */
+  bool is_another_empty = now_page->MergePairFrom(merge_leaf_page, is_right_sibling);
+
+  /* 在父页删除或修改键值对，若父页需要合并则进行合并 */
+  if (!is_another_empty) {   // 若另一个页面非空，则修改父页对应键，不需要判断父页是否合并
+    if (is_right_sibling) {  // 若合并的是右兄弟，则修改对应键
+      parent_page->SetKeyAt(find_index + 1, merge_leaf_page->KeyAt(0));
+    } else {  // 若合并的是左兄弟，则修改对应键
+      parent_page->SetKeyAt(find_index, now_page->KeyAt(0));
+    }
+  } else {                   // 若另一个页面为空，则删除父页键值对，需要判断父页是否合并
+    if (is_right_sibling) {  // 若右兄弟为空，则删除对应键值对
+      parent_page->RemovePairAt(find_index + 1);
+    } else {  // 若左兄弟为空，则修改对应键值对
+      parent_page->RemovePairAt(find_index - 1);
+    }
+    // 若父页需要合并则进行合并
+    if (parent_page->GetSize() < parent_page->GetMinSize()) {
+      MergePage<InternalPage>(ancestor_page_id);
+    }
+  }
+}
 
 template class BPlusTree<GenericKey<4>, RID, GenericComparator<4>>;
 

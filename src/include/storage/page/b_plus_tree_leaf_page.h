@@ -69,7 +69,8 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   auto ValueAt(int index) const -> ValueType;
   void InsertPairAt(int index, const KeyType &key, const ValueType &value);
   void RemovePairAt(int index);
-  void MoveHalfPairTo(BPlusTreeLeafPage *another_page);
+  void SplitHalfPairTo(BPlusTreeLeafPage *another_page);
+  auto MergePairFrom(BPlusTreeLeafPage *another_page, bool is_another_larger) -> bool;
 
   /**
    * @brief For test only return a string representing all keys in

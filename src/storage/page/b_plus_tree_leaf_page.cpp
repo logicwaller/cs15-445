@@ -86,17 +86,70 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::RemovePairAt(int index) {
 }
 
 /*
- * 将本page键值对的[minsize, size)移动到another_page键值对的[0, size-half_size-1]
- * 注：another_page必须没有键值对
+ * 将本page键值对minsize以后的键值对移动到another_page键值对队尾(分裂case)
  */
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveHalfPairTo(BPlusTreeLeafPage *another_page) {
-  int half_size = GetMinSize();
+void B_PLUS_TREE_LEAF_PAGE_TYPE::SplitHalfPairTo(BPlusTreeLeafPage *another_page) {
+  int min_size = GetMinSize();
   int size = GetSize();
-  for (int i = 0; i < size - half_size; i++) {
-    another_page->InsertPairAt(i, KeyAt(half_size), ValueAt(half_size));
+  int another_page_size = another_page->GetSize();  // 分裂情况下该值一定是0
+  int move_size = size - min_size;                  // 记录移动的键值对数
+  // 进行移动
+  for (int i = 0; i < move_size; i++) {  // 移动[min_size, size)的键值对到another_page的队尾
+    another_page->key_array_[another_page_size + i] = key_array_[min_size + i];
+    another_page->rid_array_[another_page_size + i] = rid_array_[min_size + i];
   }
-  ChangeSizeBy(-(size - half_size));  // this减少了size - half_size的键值对
+  another_page->ChangeSizeBy(move_size);  // another_page增加move_size
+  ChangeSizeBy(-move_size);               // this减少了move_size的键值对
+}
+
+/**
+ * @brief 将another_page的键值对插入到本page(合并case)
+ *        若another_page.size+this_page.size小于max_size,则将其所有键值对都插入本键值对;否则只插入到使两个page的size相同
+ * @param  is_another_larger 表示another_page内的键是否比this大
+ * @return 若another全部插入则返回true;否则返回false
+ */
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::MergePairFrom(BPlusTreeLeafPage *another_page, bool is_another_larger) -> bool {
+  int this_size = GetSize();
+  int another_size = another_page->GetSize();
+
+  // 获取需要移动的键值对数
+  int move_size;  // 记录another_page需要移动的键值对数
+  bool res;
+  if (this_size + another_size < GetMaxSize()) {  // 将another的所有键值对插入本page
+    move_size = another_size;
+    res = true;
+  } else {  // 平均两个page的键值对
+    move_size = another_size - (std::ceil((this_size + another_size) / 2));
+    res = false;
+  }
+
+  // 进行移动
+  if (is_another_larger) {  // 若another_page更大，则将another的前move_size个键值对移到this的后面
+    // 在this的后面新添键值对
+    for (int i = 0; i < move_size; i++) {
+      key_array_[this_size + i] = another_page->key_array_[i];
+      rid_array_[this_size + i] = another_page->rid_array_[i];
+    }
+    // 删除another的前move_size个键值对
+    for (int i = 0; i < another_size - move_size; i++) {
+      another_page->key_array_[i] = another_page->key_array_[move_size + i];
+      another_page->rid_array_[i] = another_page->rid_array_[move_size + i];
+    }
+  } else {  // 若another_page更小，则将another的后move_size个键值对移到this的前面
+    for (int i = 0; i < move_size; i++) {
+      // 将this的前move_size键值对整体后移，为新添键值对留空
+      key_array_[move_size + i] = key_array_[i];
+      rid_array_[move_size + i] = rid_array_[i];
+      // 将another的后move_size键值对移动到this前
+      key_array_[i] = another_page->key_array_[another_size - move_size + i];
+      rid_array_[i] = another_page->rid_array_[another_size - move_size + i];
+    }
+  }
+  ChangeSizeBy(move_size);                 // this增加了move_size
+  another_page->ChangeSizeBy(-move_size);  // another减少了move_size
+  return res;
 }
 
 template class BPlusTreeLeafPage<GenericKey<4>, RID, GenericComparator<4>>;

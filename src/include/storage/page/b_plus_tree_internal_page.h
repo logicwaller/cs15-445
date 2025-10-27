@@ -90,14 +90,27 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   void SetValueAt(int index, const ValueType &value);
 
   /**
-   *   @brief  将本page键值对的[minsize + 1, size)移动到another_page键值对的[1, size-half_size-1]
+   *   @brief 删除index处键值对，将后续键值对前移
+   */
+  void RemovePairAt(int index);
+
+  /**
+   *   @brief  将本page键值对的[minsize + 1, size)移动到another_page键值对的[1, size-minsize)
    *           本page键值对的第minsize项的value设置为another_page的第0项值
    *           删除本page的[minsize, size)的键值对
-   *           注：another_page必须没有键值对
    *
    *   @return 返回本page第minsize项的key
    */
-  auto MoveHalfPairTo(BPlusTreeInternalPage *another_page) -> KeyType;
+  auto SplitHalfPairTo(BPlusTreeInternalPage *another_page) -> KeyType;
+
+  /**
+   * @brief 将another_page的键值对插入到本page(合并case)
+   *        若another_page.size+this_page.size小于max_size,则将其所有键值对都插入本键值对;
+   *        否则只插入到使两个page的size相同
+   * @param  is_another_larger 表示another_page内的键是否比this大
+   * @return 若another全部插入则返回true;否则返回false
+   */
+  auto MergePairFrom(BPlusTreeInternalPage *another_page, bool is_another_larger) -> bool;
 
   /**
    * @brief For test only, return a string representing all keys in
