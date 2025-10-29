@@ -19,7 +19,7 @@
 namespace bustub {
 
 #define B_PLUS_TREE_LEAF_PAGE_TYPE BPlusTreeLeafPage<KeyType, ValueType, KeyComparator>
-#define LEAF_PAGE_HEADER_SIZE 16
+#define LEAF_PAGE_HEADER_SIZE 20  // 添加pre_page_id后更改此值
 #define LEAF_PAGE_SLOT_CNT ((BUSTUB_PAGE_SIZE - LEAF_PAGE_HEADER_SIZE) / (sizeof(KeyType) + sizeof(ValueType)))
 
 /**
@@ -42,9 +42,9 @@ namespace bustub {
  *  -----------------------------------------------
  * | PageType (4) | CurrentSize (4) | MaxSize (4) |
  *  -----------------------------------------------
- *  -----------------
- * | NextPageId (4) |
- *  -----------------
+ *  -----------------  -----------------
+ * | NextPageId (4) |  | PrePageId (4)（新添） |
+ *  -----------------  -----------------
  */
 INDEX_TEMPLATE_ARGUMENTS
 class BPlusTreeLeafPage : public BPlusTreePage {
@@ -67,6 +67,8 @@ class BPlusTreeLeafPage : public BPlusTreePage {
 
   // 辅助函数
   auto ValueAt(int index) const -> ValueType;
+  auto GetPrePageId() const -> page_id_t;
+  void SetPrePageId(page_id_t pre_page_id);
   void InsertPairAt(int index, const KeyType &key, const ValueType &value);
   void RemovePairAt(int index);
   void SplitHalfPairTo(BPlusTreeLeafPage *another_page);
@@ -103,6 +105,7 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   KeyType key_array_[LEAF_PAGE_SLOT_CNT];
   ValueType rid_array_[LEAF_PAGE_SLOT_CNT];
   // (Fall 2024) Feel free to add more fields and helper functions below if needed
+  page_id_t pre_page_id_;  // 记录上一页的id
 };
 
 }  // namespace bustub

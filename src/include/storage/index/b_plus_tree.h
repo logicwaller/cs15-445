@@ -142,7 +142,15 @@ class BPlusTree {
   auto ToPrintableBPlusTree(page_id_t root_id) -> PrintableBPlusTree;
 
   /* 辅助函数 */
+  // 记录二分查找leaf_page的结果
+  // TODO:是否利用这个进行重构
+  struct BinarySearchRes {
+    int page_id_;
+    int index_;
+  };
 
+  // 获取开始/结束的page_id
+  auto GetBEPageId(bool is_begin) const -> int;
   // 二分查找
   template <typename PageType>
   auto KeyBinarySearch(const PageType *page, const KeyType &key) const -> int;
@@ -150,6 +158,8 @@ class BPlusTree {
   auto FindLeafPage(const KeyType &key, Context &ctx) const -> std::deque<int>;
   // 获取给定page_id的page的size
   auto GetPageSizeById(const int page_id, bool is_leaf) const -> int;
+  // TODO:是否需要。获取给定leaf_page的下一个leaf_page的page_id
+  auto FindNextPage(const int page_id, const std::deque<int> ancestor_page_id) const -> std::optional<int>;
 
   /* 分裂部分 */
   // 分裂leafpage

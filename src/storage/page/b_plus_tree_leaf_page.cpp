@@ -29,8 +29,9 @@ INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::Init(int max_size) {
   SetPageType(IndexPageType::LEAF_PAGE);  // 设置page_size_
   SetSize(0);                             // 设置size_=0
-  next_page_id_ = INVALID_PAGE_ID;        // TODO:设置next_page_id_
   SetMaxSize(max_size);                   // 设置max_size_
+  next_page_id_ = INVALID_PAGE_ID;        // 设置next_page_id_为Invalid
+  pre_page_id_ = INVALID_PAGE_ID;         // 设置pre_page_id_为Invalid
 }
 
 /**
@@ -54,6 +55,15 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::KeyAt(int index) const -> KeyType { return key_
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::ValueAt(int index) const -> ValueType { return rid_array_[index]; }
+
+/*
+ * 设置pre_page_id
+ */
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::GetPrePageId() const -> page_id_t { return pre_page_id_; }
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::SetPrePageId(page_id_t pre_page_id) { pre_page_id_ = pre_page_id; }
 
 /*
  * 在index处插入键值对(key,value),将后续的键值对后移
