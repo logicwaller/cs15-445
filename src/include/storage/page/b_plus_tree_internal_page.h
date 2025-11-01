@@ -99,6 +99,8 @@ class BPlusTreeInternalPage : public BPlusTreePage {
    *           本page键值对的第minsize项的value设置为another_page的第0项值
    *           删除本page的[minsize, size)的键值对
    *
+   *   @param another_page 要被分裂的page，必须为空
+   *
    *   @return 返回本page第minsize项的key
    */
   auto SplitHalfPairTo(BPlusTreeInternalPage *another_page) -> KeyType;

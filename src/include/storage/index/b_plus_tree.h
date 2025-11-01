@@ -149,13 +149,18 @@ class BPlusTree {
     int index_;
   };
 
+  // 初始化ctx
+  void InitContext(Context &ctx, bool is_write);
   // 获取开始/结束的page_id
   auto GetBEPageId(bool is_begin) const -> int;
   // 二分查找
   template <typename PageType>
   auto KeyBinarySearch(const PageType *page, const KeyType &key) const -> int;
-  // 查找key应在的leafpage
-  auto FindLeafPage(const KeyType &key, Context &ctx) const -> std::deque<int>;
+  // 乐观查找key应在的leafpage
+  template <typename GuardType>
+  void OptSearchLeafPage(const KeyType &key, Context &ctx, GuardType &res_guard) const;
+  // 悲观查找key应在的leafpage
+  void PessSearchLeafPage(const KeyType &key, Context &ctx, bool is_split) const;
   // 获取给定page_id的page的size
   auto GetPageSizeById(const int page_id, bool is_leaf) const -> int;
   // TODO:是否需要。获取给定leaf_page的下一个leaf_page的page_id
@@ -163,14 +168,14 @@ class BPlusTree {
 
   /* 分裂部分 */
   // 分裂leafpage
-  void SplitLeafPage(std::deque<int> &ancestor_page_id);
+  void SplitLeafPage(const KeyType &key, Context &ctx);
   // 向internal_page进行插入(SplitLeafPage的辅助函数)
-  void InsertPairToInternalPage(std::deque<int> &ancestor_page_id, const KeyType &key, const page_id_t &value,
-                                const page_id_t &lvalue = 0);
+  void InsertPairToInternalPage(Context &ctx, const KeyType &key, const page_id_t &value,
+                                std::optional<const page_id_t> lvalue = std::nullopt);
 
   /*合并部分*/
   template <typename PageType>
-  void MergePage(std::deque<int> &ancestor_page_id);
+  void MergePage(Context &ctx, const std::optional<KeyType> key = std::nullopt);
 
   // member variable
   std::string index_name_;

@@ -78,14 +78,13 @@ INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::SplitHalfPairTo(BPlusTreeInternalPage *another_page) -> KeyType {
   int min_size = GetMinSize();
   int size = GetSize();
-  int another_page_size = another_page->GetSize();  // 分裂情况下该值一定是0
-  int move_size = size - min_size;                  // 记录移动的键值对数
-  KeyType res = KeyAt(min_size);                    // 记录返回的key
-  // 进行移动
-  another_page->page_id_array_[0] = page_id_array_[min_size];  // 将本页min_size项的值移动到another的第0项
-  for (int i = 1; i < move_size; i++) {  // 移动[min_size+1, size)的键值对到another_page的[1, size-min_size)
-    another_page->key_array_[another_page_size + i] = key_array_[min_size + i];
-    another_page->page_id_array_[another_page_size + i] = page_id_array_[min_size + i];
+  int move_size = size - min_size;  // 记录移动的键值对数
+  KeyType res = KeyAt(min_size);    // 记录返回的key
+  // 进行移动,将本页[min_size, size)的键值对移动到another的[0, size-min_size)上
+  another_page->page_id_array_[0] = page_id_array_[min_size];  // 本页第min_size只需移动，无需移动键
+  for (int i = 1; i < move_size; i++) {  // 移动[min_size + 1, size)的键值对到another_page的[1, size-min_size)
+    another_page->key_array_[i] = key_array_[min_size + i];
+    another_page->page_id_array_[i] = page_id_array_[min_size + i];
   }
   another_page->ChangeSizeBy(move_size - 1);  // another增加move_size-1;减的这个1即为传到父页的this.keyAt(minsize)
   ChangeSizeBy(-move_size);                   // this减少了move_size的键值对
@@ -105,7 +104,7 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::MergePairFrom(BPlusTreeInternalPage *anothe
     move_size = another_size;
     res = true;
   } else {  // 平均两个page的键值对
-    move_size = another_size - (std::ceil((this_size + another_size) / 2));
+    move_size = another_size - (std::ceil((this_size + another_size) / 2.0));
     res = false;
   }
 
@@ -113,21 +112,29 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::MergePairFrom(BPlusTreeInternalPage *anothe
   if (is_another_larger) {  // 若another_page更大，则将another的前move_size个键值对移到this的后面
     // 在this的后面新添键值对
     for (int i = 0; i < move_size; i++) {
-      key_array_[this_size + i] = another_page->key_array_[i];
+      if (i != 0) {  // 避免访问key_array[0]
+        key_array_[this_size + i] = another_page->key_array_[i];
+      }
       page_id_array_[this_size + i] = another_page->page_id_array_[i];
     }
     // 删除another的前move_size个键值对
     for (int i = 0; i < another_size - move_size; i++) {
-      another_page->key_array_[i] = another_page->key_array_[move_size + i];
+      if (i != 0) {  // 避免访问key_array[0]
+        another_page->key_array_[i] = another_page->key_array_[move_size + i];
+      }
       another_page->page_id_array_[i] = another_page->page_id_array_[move_size + i];
     }
   } else {  // 若another_page更小，则将another的后move_size个键值对移到this的前面
     for (int i = 0; i < move_size; i++) {
       // 将this的前move_size键值对整体后移，为新添键值对留空
-      key_array_[move_size + i] = key_array_[i];
+      if (i != 0) {  // 避免访问key_array[0]
+        key_array_[move_size + i] = key_array_[i];
+      }
       page_id_array_[move_size + i] = page_id_array_[i];
       // 将another的后move_size键值对移动到this前
-      key_array_[i] = another_page->key_array_[another_size - move_size + i];
+      if (i != 0) {  // 避免访问key_array[0]
+        key_array_[i] = another_page->key_array_[another_size - move_size + i];
+      }
       page_id_array_[i] = another_page->page_id_array_[another_size - move_size + i];
     }
   }

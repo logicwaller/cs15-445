@@ -50,7 +50,9 @@ TEST(BPlusTreeTests, BasicScaleTest) {  // NOLINT
   // randomized the insertion order
   auto rng = std::default_random_engine{};
   std::shuffle(keys.begin(), keys.end(), rng);
+  [[maybe_unused]] int i = 0;  // 添加计数，方便debug在什么时候出错
   for (auto key : keys) {
+    i++;
     int64_t value = key & 0xFFFFFFFF;
     rid.Set(static_cast<int32_t>(key >> 32), value);
     index_key.SetFromInteger(key);

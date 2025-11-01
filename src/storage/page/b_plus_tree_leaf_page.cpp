@@ -131,7 +131,7 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::MergePairFrom(BPlusTreeLeafPage *another_page, 
     move_size = another_size;
     res = true;
   } else {  // 平均两个page的键值对
-    move_size = another_size - (std::ceil((this_size + another_size) / 2));
+    move_size = another_size - (std::ceil((this_size + another_size) / 2.0));
     res = false;
   }
 
