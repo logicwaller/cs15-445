@@ -67,12 +67,13 @@ class BPlusTreeLeafPage : public BPlusTreePage {
 
   // 辅助函数
   auto ValueAt(int index) const -> ValueType;
+  auto IsIndexValid(int index) const -> bool;
   auto GetPrePageId() const -> page_id_t;
   void SetPrePageId(page_id_t pre_page_id);
   void InsertPairAt(int index, const KeyType &key, const ValueType &value);
   void RemovePairAt(int index);
   void SplitHalfPairTo(BPlusTreeLeafPage *another_page);
-  auto MergePairFrom(BPlusTreeLeafPage *another_page, bool is_another_larger) -> bool;
+  auto MergePairFrom(BPlusTreeLeafPage *another_page) -> bool;
 
   /**
    * @brief For test only return a string representing all keys in
