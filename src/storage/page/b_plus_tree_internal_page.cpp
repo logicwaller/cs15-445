@@ -47,6 +47,9 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetKeyAt(int index, const KeyType &key) { k
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::ValueAt(int index) const -> ValueType { return page_id_array_[index]; }
 
+/**
+ *   @brief 在index处插入键值对，将后续键值对后移
+ */
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertPairAt(int index, const KeyType &key, const ValueType &value) {
   // 将index后的键值对后移
@@ -61,9 +64,15 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertPairAt(int index, const KeyType &key,
   ChangeSizeBy(1);  // 插入后size++
 }
 
+/**
+ *   @brief 在index处改变value
+ */
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetValueAt(int index, const ValueType &value) { page_id_array_[index] = value; }
 
+/**
+ *   @brief 删除index处键值对，将后续键值对前移
+ */
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::RemovePairAt(int index) {
   int size = GetSize();
@@ -74,6 +83,17 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::RemovePairAt(int index) {
   ChangeSizeBy(-1);  // 删除后size--
 }
 
+/**
+ *   @brief  将本page键值对的[split_index + 1, size)移动到another_page键值对的[1, size-split_index)
+ *           本page键值对的第split_index项的value设置为another_page的第0项值
+ *           删除本page的[split_index, size)的键值对
+ *
+ *   @param another_page 要被分裂的page，必须为空
+ *   @param split_idnex 指定被分裂的index,可以是min_size或min_size-1
+ *   @param split_value 若有值则说明在another_page保留split_index处的键值对，同时another的第0处键为该值
+ *
+ *   @return 返回本page第split_index项的key
+ */
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::SplitHalfPairTo(BPlusTreeInternalPage *another_page, int split_index,
                                                      std::optional<ValueType> split_value) -> KeyType {
@@ -103,8 +123,19 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::SplitHalfPairTo(BPlusTreeInternalPage *anot
   return res;
 }
 
+/**
+ * @brief 将another_page的键值对插入到本page(合并case)
+ *        若another_page.size+this_page.size小于max_size,则将其所有键值对都插入本键值对;
+ *        否则只插入到使两个page的size相同
+ *        插入到本页的第一项的key为insert_key
+ *
+ * @param  insert_key 表示插入本页的key
+ * @param is_another_larger 表示另一页是否在本页的右边，即是否比本页更大
+ * @return 若another全部插入则返回true;否则返回false
+ */
 INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::MergePairFrom(BPlusTreeInternalPage *another_page, KeyType insert_key) -> bool {
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::MergePairFrom(BPlusTreeInternalPage *another_page, bool is_another_larger,
+                                                   KeyType insert_key) -> bool {
   int this_size = GetSize();
   int another_size = another_page->GetSize();
 
@@ -120,20 +151,36 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::MergePairFrom(BPlusTreeInternalPage *anothe
   }
 
   // 进行移动
-  // 在this的后面新添键值对
-  for (int i = 0; i < move_size; i++) {
-    page_id_array_[this_size + i] = another_page->page_id_array_[i];
-    if (i != 0) {  // 避免访问key_array[0]
-      key_array_[this_size + i] = another_page->key_array_[i];
-    } else {  // i==0时，需要新添本页的键
-      key_array_[this_size] = insert_key;
+  if (is_another_larger) {  // 若another_page更大，则将another的前move_size个键值对移到this的后面
+    // 在this的后面新添键值对
+    for (int i = 0; i < move_size; i++) {
+      if (i != 0) {  // 避免访问key_array[0]
+        key_array_[this_size + i] = another_page->key_array_[i];
+      } else {  // i==0时，需要新添本页的键
+        key_array_[this_size] = insert_key;
+      }
+      page_id_array_[this_size + i] = another_page->page_id_array_[i];
+    }
+    // 删除another的前move_size个键值对;another_page的0处key仍赋值，方便改变父页
+    for (int i = 0; i < another_size - move_size; i++) {
+      another_page->key_array_[i] = another_page->key_array_[move_size + i];
+      another_page->page_id_array_[i] = another_page->page_id_array_[move_size + i];
+    }
+  } else {  // 若another_page更小，则将another的后move_size个键值对移到this的前面
+    for (int i = 0; i < move_size; i++) {
+      // 将this的前move_size键值对整体后移，为新添键值对留空
+      if (i != 0) {  // 避免访问key_array[0]
+        key_array_[move_size + i] = key_array_[i];
+      } else {  // i==0时，需要新添本页的键
+        key_array_[move_size] = insert_key;
+      }
+      page_id_array_[move_size + i] = page_id_array_[i];
+      // 将another的后move_size键值对移动到this;this的0处key仍赋值，方便改变父页
+      key_array_[i] = another_page->key_array_[another_size - move_size + i];
+      page_id_array_[i] = another_page->page_id_array_[another_size - move_size + i];
     }
   }
-  // 删除another的前move_size个键值对;another_page的0处key仍赋值，方便改变父页
-  for (int i = 0; i < another_size - move_size; i++) {
-    another_page->key_array_[i] = another_page->key_array_[move_size + i];
-    another_page->page_id_array_[i] = another_page->page_id_array_[move_size + i];
-  }
+
   ChangeSizeBy(move_size);                 // this增加了move_size
   another_page->ChangeSizeBy(-move_size);  // another减少了move_size
   return res;

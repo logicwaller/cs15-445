@@ -142,13 +142,6 @@ class BPlusTree {
   auto ToPrintableBPlusTree(page_id_t root_id) -> PrintableBPlusTree;
 
   /* 辅助函数 */
-  // 记录二分查找leaf_page的结果
-  // TODO:是否利用这个进行重构
-  struct BinarySearchRes {
-    int page_id_;
-    int index_;
-  };
-
   // 初始化ctx
   void InitContext(Context &ctx, bool is_write);
   // 获取开始/结束的page_id
@@ -160,7 +153,7 @@ class BPlusTree {
   template <typename GuardType>
   void OptSearchLeafPage(const KeyType &key, Context &ctx, GuardType &res_guard) const;
   // 悲观查找key应在的leafpage
-  void PessSearchLeafPage(const KeyType &key, Context &ctx, bool is_split) const;
+  auto PessSearchLeafPage(const KeyType &key, Context &ctx, bool is_split) const -> std::deque<int>;
   // 获取给定page_id的page的size
   auto GetPageSizeById(const int page_id, bool is_leaf) const -> int;
   // TODO:是否需要。获取给定leaf_page的下一个leaf_page的page_id
@@ -174,8 +167,9 @@ class BPlusTree {
                                 std::optional<const page_id_t> lvalue = std::nullopt);
 
   /*合并部分*/
+  void MergePage(Context &ctx, const KeyType &key);
   template <typename PageType>
-  void MergePage(Context &ctx, const std::optional<KeyType> key = std::nullopt);
+  void MergePageHelper(Context &ctx, std::deque<int> &res_index);
 
   // member variable
   std::string index_name_;

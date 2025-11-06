@@ -79,45 +79,17 @@ class BPlusTreeInternalPage : public BPlusTreePage {
    */
   auto ValueAt(int index) const -> ValueType;
 
-  /**
-   *   @brief 在index处插入键值对，将后续键值对后移
-   */
+  // 辅助函数
   void InsertPairAt(int index, const KeyType &key, const ValueType &value);
 
-  /**
-   *   @brief 在index处改变value
-   */
   void SetValueAt(int index, const ValueType &value);
 
-  /**
-   *   @brief 删除index处键值对，将后续键值对前移
-   */
   void RemovePairAt(int index);
 
-  /**
-   *   @brief  将本page键值对的[split_index + 1, size)移动到another_page键值对的[1, size-split_index)
-   *           本page键值对的第split_index项的value设置为another_page的第0项值
-   *           删除本page的[split_index, size)的键值对
-   *
-   *   @param another_page 要被分裂的page，必须为空
-   *   @param split_idnex 指定被分裂的index,可以是min_size或min_size-1
-   *   @param split_value 若有值则说明在another_page保留split_index处的键值对，同时another的第0处键为该值
-   *
-   *   @return 返回本page第split_index项的key
-   */
   auto SplitHalfPairTo(BPlusTreeInternalPage *another_page, int split_index,
                        std::optional<ValueType> split_value = std::nullopt) -> KeyType;
 
-  /**
-   * @brief 将another_page的键值对插入到本page(合并case)
-   *        若another_page.size+this_page.size小于max_size,则将其所有键值对都插入本键值对;
-   *        否则只插入到使两个page的size相同
-   *        插入到本页的第一项的key为insert_key
-   *
-   * @param  insert_key 表示插入本页的key
-   * @return 若another全部插入则返回true;否则返回false
-   */
-  auto MergePairFrom(BPlusTreeInternalPage *another_page, KeyType insert_key) -> bool;
+  auto MergePairFrom(BPlusTreeInternalPage *another_page, bool is_another_larger, KeyType insert_key) -> bool;
 
   /**
    * @brief For test only, return a string representing all keys in

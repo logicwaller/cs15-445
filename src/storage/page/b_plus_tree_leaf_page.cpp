@@ -122,10 +122,11 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::SplitHalfPairTo(BPlusTreeLeafPage *another_page
 /**
  * @brief 将another_page的键值对插入到本page(合并case)
  *        若another_page.size+this_page.size小于max_size,则将其所有键值对都插入本键值对;否则只插入到使两个page的size相同
+ * @param is_another_larger 表示另一页是否在本页的右边，即是否比本页更大
  * @return 若another全部插入则返回true;否则返回false
  */
 INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_LEAF_PAGE_TYPE::MergePairFrom(BPlusTreeLeafPage *another_page) -> bool {
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::MergePairFrom(BPlusTreeLeafPage *another_page, bool is_another_larger) -> bool {
   int this_size = GetSize();
   int another_size = another_page->GetSize();
 
@@ -141,15 +142,26 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::MergePairFrom(BPlusTreeLeafPage *another_page) 
   }
 
   // 进行移动
-  // 在this的后面新添键值对
-  for (int i = 0; i < move_size; i++) {
-    key_array_[this_size + i] = another_page->key_array_[i];
-    rid_array_[this_size + i] = another_page->rid_array_[i];
-  }
-  // 删除another的前move_size个键值对
-  for (int i = 0; i < another_size - move_size; i++) {
-    another_page->key_array_[i] = another_page->key_array_[move_size + i];
-    another_page->rid_array_[i] = another_page->rid_array_[move_size + i];
+  if (is_another_larger) {  // 若another_page更大，则将another的前move_size个键值对移到this的后面
+    // 在this的后面新添键值对
+    for (int i = 0; i < move_size; i++) {
+      key_array_[this_size + i] = another_page->key_array_[i];
+      rid_array_[this_size + i] = another_page->rid_array_[i];
+    }
+    // 删除another的前move_size个键值对
+    for (int i = 0; i < another_size - move_size; i++) {
+      another_page->key_array_[i] = another_page->key_array_[move_size + i];
+      another_page->rid_array_[i] = another_page->rid_array_[move_size + i];
+    }
+  } else {  // 若another_page更小，则将another的后move_size个键值对移到this的前面
+    for (int i = 0; i < move_size; i++) {
+      // 将this的前move_size键值对整体后移，为新添键值对留空
+      key_array_[move_size + i] = key_array_[i];
+      rid_array_[move_size + i] = rid_array_[i];
+      // 将another的后move_size键值对移动到this前
+      key_array_[i] = another_page->key_array_[another_size - move_size + i];
+      rid_array_[i] = another_page->rid_array_[another_size - move_size + i];
+    }
   }
 
   ChangeSizeBy(move_size);                 // this增加了move_size
