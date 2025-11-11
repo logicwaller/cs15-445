@@ -151,7 +151,8 @@ class BPlusTree {
   auto KeyBinarySearch(const PageType *page, const KeyType &key) const -> int;
   // 乐观查找key应在的leafpage
   template <typename GuardType>
-  void OptSearchLeafPage(const KeyType &key, Context &ctx, GuardType &res_guard) const;
+  void OptSearchLeafPage(const KeyType &key, Context &ctx, GuardType &res_guard);
+  // void OptSearchLeafPage(const KeyType &key, Context &ctx, GuardType &res_guard) const;
   // 悲观查找key应在的leafpage
   auto PessSearchLeafPage(const KeyType &key, Context &ctx, bool is_split) const -> std::deque<int>;
   // 获取给定page_id的page的size
@@ -161,13 +162,13 @@ class BPlusTree {
 
   /* 分裂部分 */
   // 分裂leafpage
-  void SplitLeafPage(const KeyType &key, Context &ctx);
+  auto SplitLeafPage(const KeyType &key, const ValueType &value, Context &ctx) -> bool;
   // 向internal_page进行插入(SplitLeafPage的辅助函数)
   void InsertPairToInternalPage(Context &ctx, const KeyType &key, const page_id_t &value,
                                 std::optional<const page_id_t> lvalue = std::nullopt);
 
   /*合并部分*/
-  void MergePage(Context &ctx, const KeyType &key);
+  void MergePage(const KeyType &key, Context &ctx);
   template <typename PageType>
   void MergePageHelper(Context &ctx, std::deque<int> &res_index);
 

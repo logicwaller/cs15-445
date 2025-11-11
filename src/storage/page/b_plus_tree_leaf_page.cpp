@@ -31,7 +31,6 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::Init(int max_size) {
   SetSize(0);                             // 设置size_=0
   SetMaxSize(max_size);                   // 设置max_size_
   next_page_id_ = INVALID_PAGE_ID;        // 设置next_page_id_为Invalid
-  pre_page_id_ = INVALID_PAGE_ID;         // 设置pre_page_id_为Invalid
 }
 
 /**
@@ -61,15 +60,6 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::ValueAt(int index) const -> ValueType { return 
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::IsIndexValid(int index) const -> bool { return index >= 0 && index < GetSize(); }
-
-/*
- * 设置pre_page_id
- */
-INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_LEAF_PAGE_TYPE::GetPrePageId() const -> page_id_t { return pre_page_id_; }
-
-INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::SetPrePageId(page_id_t pre_page_id) { pre_page_id_ = pre_page_id; }
 
 /*
  * 在index处插入键值对(key,value),将后续的键值对后移
@@ -126,19 +116,16 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::SplitHalfPairTo(BPlusTreeLeafPage *another_page
  * @return 若another全部插入则返回true;否则返回false
  */
 INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_LEAF_PAGE_TYPE::MergePairFrom(BPlusTreeLeafPage *another_page, bool is_another_larger) -> bool {
+void B_PLUS_TREE_LEAF_PAGE_TYPE::MergePairFrom(BPlusTreeLeafPage *another_page, bool is_another_larger) {
   int this_size = GetSize();
   int another_size = another_page->GetSize();
 
   // 获取需要移动的键值对数
-  int move_size;  // 记录another_page需要移动的键值对数
-  bool res;
+  int move_size;                                  // 记录another_page需要移动的键值对数
   if (this_size + another_size < GetMaxSize()) {  // 将another的所有键值对插入本page
     move_size = another_size;
-    res = true;
   } else {  // 平均两个page的键值对
     move_size = another_size - (std::ceil((this_size + another_size) / 2.0));
-    res = false;
   }
 
   // 进行移动
@@ -166,7 +153,6 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::MergePairFrom(BPlusTreeLeafPage *another_page, 
 
   ChangeSizeBy(move_size);                 // this增加了move_size
   another_page->ChangeSizeBy(-move_size);  // another减少了move_size
-  return res;
 }
 
 template class BPlusTreeLeafPage<GenericKey<4>, RID, GenericComparator<4>>;

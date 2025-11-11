@@ -134,20 +134,17 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::SplitHalfPairTo(BPlusTreeInternalPage *anot
  * @return 若another全部插入则返回true;否则返回false
  */
 INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::MergePairFrom(BPlusTreeInternalPage *another_page, bool is_another_larger,
-                                                   KeyType insert_key) -> bool {
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MergePairFrom(BPlusTreeInternalPage *another_page, bool is_another_larger,
+                                                   KeyType insert_key) {
   int this_size = GetSize();
   int another_size = another_page->GetSize();
 
   // 获取需要移动的键值对数
-  int move_size;  // 记录another_page需要移动的键值对数
-  bool res;
+  int move_size;                                   // 记录another_page需要移动的键值对数
   if (this_size + another_size <= GetMaxSize()) {  // 将another的所有键值对插入本page
     move_size = another_size;
-    res = true;
   } else {  // 平均两个page的键值对
     move_size = another_size - (std::ceil((this_size + another_size) / 2.0));
-    res = false;
   }
 
   // 进行移动
@@ -183,7 +180,6 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::MergePairFrom(BPlusTreeInternalPage *anothe
 
   ChangeSizeBy(move_size);                 // this增加了move_size
   another_page->ChangeSizeBy(-move_size);  // another减少了move_size
-  return res;
 }
 
 // valuetype for internalNode should be page id_t
