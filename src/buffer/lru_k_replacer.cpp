@@ -102,13 +102,13 @@ void LRUKReplacer::Remove(frame_id_t frame_id) {
 
 auto LRUKReplacer::Size() -> size_t { return curr_size_; }
 
-auto LRUKReplacer::GetNodeKTime(LRUKNode node) -> std::optional<size_t> {
+auto LRUKReplacer::GetNodeKTime(const LRUKNode &node) -> std::optional<size_t> {
   size_t history_size = node.history_.size();
   if (history_size < k_) {  // 若访问次数小于k_，返回null
     return std::nullopt;
   }
   // 否则返回倒数第k_次访问时间
-  auto tem = std::next(node.history_.begin(), history_size - k_);
+  auto tem = std::prev(node.history_.end(), k_);
   return *tem;
 }
 

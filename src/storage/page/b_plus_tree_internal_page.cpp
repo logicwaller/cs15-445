@@ -48,6 +48,12 @@ INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::ValueAt(int index) const -> ValueType { return page_id_array_[index]; }
 
 /**
+ *   @brief 判断给定index是否在该page内
+ */
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::IsIndexValid(int index) const -> bool { return index >= 0 && index < GetSize(); }
+
+/**
  *   @brief 在index处插入键值对，将后续键值对后移
  */
 INDEX_TEMPLATE_ARGUMENTS

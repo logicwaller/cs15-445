@@ -38,7 +38,7 @@ class LRUKNode {
   bool is_evictable_{false};
 
   // 初始化
-  explicit LRUKNode(std::list<size_t> history, frame_id_t fid, bool is_evict) {
+  explicit LRUKNode(std::list<size_t> &&history, frame_id_t fid, bool is_evict) {
     history_ = std::move(history);
     fid_ = fid;
     is_evictable_ = is_evict;
@@ -166,7 +166,7 @@ class LRUKReplacer {
    *
    * @return std::optinal<size_t>
    */
-  auto GetNodeKTime(LRUKNode node) -> std::optional<size_t>;
+  auto GetNodeKTime(const LRUKNode &node) -> std::optional<size_t>;
 
   // Remove maybe_unused if you start using them.
   std::unordered_map<frame_id_t, LRUKNode> node_store_;

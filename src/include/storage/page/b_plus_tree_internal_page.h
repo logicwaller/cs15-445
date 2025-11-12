@@ -80,6 +80,8 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   auto ValueAt(int index) const -> ValueType;
 
   // 辅助函数
+  auto IsIndexValid(int index) const -> bool;
+
   void InsertPairAt(int index, const KeyType &key, const ValueType &value);
 
   void SetValueAt(int index, const ValueType &value);

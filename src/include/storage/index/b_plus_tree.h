@@ -154,7 +154,8 @@ class BPlusTree {
   void OptSearchLeafPage(const KeyType &key, Context &ctx, GuardType &res_guard);
   // void OptSearchLeafPage(const KeyType &key, Context &ctx, GuardType &res_guard) const;
   // 悲观查找key应在的leafpage
-  auto PessSearchLeafPage(const KeyType &key, Context &ctx, bool is_split) const -> std::deque<int>;
+  auto PessSearchLeafPage(const KeyType &key, Context &ctx, bool is_split) -> std::deque<int>;
+  // auto PessSearchLeafPage(const KeyType &key, Context &ctx, bool is_split) const -> std::deque<int>;
   // 获取给定page_id的page的size
   auto GetPageSizeById(const int page_id, bool is_leaf) const -> int;
   // TODO:是否需要。获取给定leaf_page的下一个leaf_page的page_id
