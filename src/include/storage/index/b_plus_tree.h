@@ -127,7 +127,7 @@ class BPlusTree {
    */
   void BatchOpsFromFile(const std::filesystem::path &file_name);
 
-  BufferPoolManager *Getbpm() { return bpm_; }
+  auto Getbpm() const -> BufferPoolManager * { return bpm_; }
 
  private:
   /* Debug Routines for FREE!! */
@@ -145,23 +145,19 @@ class BPlusTree {
 
   /* 辅助函数 */
   // 初始化ctx
-  void InitContext(Context &ctx, bool is_write);
+  void InitContext(Context &ctx, bool is_write) const;
   // 获取开始/结束的page_id
-  // auto GetBEPageId(bool is_begin) const -> int;
-  auto GetBEPageId(bool is_begin) -> int;
+  auto GetBEPageId(bool is_begin) const -> int;
   // 二分查找
   template <typename PageType>
   auto KeyBinarySearch(const PageType *page, const KeyType &key) const -> int;
   // 乐观查找key应在的leafpage
   template <typename GuardType>
-  void OptSearchLeafPage(const KeyType &key, Context &ctx, GuardType &res_guard);
-  // void OptSearchLeafPage(const KeyType &key, Context &ctx, GuardType &res_guard) const;
+  void OptSearchLeafPage(const KeyType &key, Context &ctx, GuardType &res_guard) const;
   // 悲观查找key应在的leafpage
-  // auto PessSearchLeafPage(const KeyType &key, Context &ctx, bool is_split) -> std::deque<int>;
-  void PessSearchLeafPage(const KeyType &key, Context &ctx, bool is_split);
-  // auto PessSearchLeafPage(const KeyType &key, Context &ctx, bool is_split) const -> std::deque<int>;
+  void PessSearchLeafPage(const KeyType &key, Context &ctx, bool is_split) const;
   // 获取给定page_id的page的size
-  auto GetPageSizeById(const int page_id) const -> int;
+  auto GetPageSizeById(int page_id) const -> int;
 
   /* 分裂部分 */
   // 分裂leafpage
@@ -174,7 +170,6 @@ class BPlusTree {
   void MergePage(const KeyType &key, Context &ctx);
   template <typename PageType>
   void MergePageHelper(Context &ctx, const KeyType &key);
-  // void MergePageHelper(Context &ctx, std::deque<int> &res_index);
 
   /* debug 函数 */
   auto GetNodeInfo(page_id_t page_id, const BPlusTreePage *page) -> std::string;
