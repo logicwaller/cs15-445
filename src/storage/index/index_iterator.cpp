@@ -20,6 +20,9 @@ INDEXITERATOR_TYPE::~IndexIterator() = default;  // NOLINT
 
 INDEX_TEMPLATE_ARGUMENTS
 auto INDEXITERATOR_TYPE::IsEnd() -> bool {
+  if (page_id_ == INVALID_PAGE_ID) {  // 当树为空时，返回的page_id即为invalid_page_id，此时已到末尾
+    return true;
+  }
   ReadPageGuard guard = bpm_->ReadPage(page_id_);
   auto now_page = guard.As<LeafPage>();
   return now_page->GetNextPageId() == INVALID_PAGE_ID && index_ == now_page->GetSize();

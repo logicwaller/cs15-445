@@ -127,6 +127,8 @@ class BPlusTree {
    */
   void BatchOpsFromFile(const std::filesystem::path &file_name);
 
+  BufferPoolManager *Getbpm() { return bpm_; }
+
  private:
   /* Debug Routines for FREE!! */
   void ToGraph(page_id_t page_id, const BPlusTreePage *page, std::ofstream &out);
@@ -145,7 +147,8 @@ class BPlusTree {
   // 初始化ctx
   void InitContext(Context &ctx, bool is_write);
   // 获取开始/结束的page_id
-  auto GetBEPageId(bool is_begin) const -> int;
+  // auto GetBEPageId(bool is_begin) const -> int;
+  auto GetBEPageId(bool is_begin) -> int;
   // 二分查找
   template <typename PageType>
   auto KeyBinarySearch(const PageType *page, const KeyType &key) const -> int;
@@ -154,16 +157,15 @@ class BPlusTree {
   void OptSearchLeafPage(const KeyType &key, Context &ctx, GuardType &res_guard);
   // void OptSearchLeafPage(const KeyType &key, Context &ctx, GuardType &res_guard) const;
   // 悲观查找key应在的leafpage
-  auto PessSearchLeafPage(const KeyType &key, Context &ctx, bool is_split) -> std::deque<int>;
+  // auto PessSearchLeafPage(const KeyType &key, Context &ctx, bool is_split) -> std::deque<int>;
+  void PessSearchLeafPage(const KeyType &key, Context &ctx, bool is_split);
   // auto PessSearchLeafPage(const KeyType &key, Context &ctx, bool is_split) const -> std::deque<int>;
   // 获取给定page_id的page的size
-  auto GetPageSizeById(const int page_id, bool is_leaf) const -> int;
-  // TODO:是否需要。获取给定leaf_page的下一个leaf_page的page_id
-  auto FindNextPage(const int page_id, const std::deque<int> ancestor_page_id) const -> std::optional<int>;
+  auto GetPageSizeById(const int page_id) const -> int;
 
   /* 分裂部分 */
   // 分裂leafpage
-  auto SplitLeafPage(const KeyType &key, const ValueType &value, Context &ctx) -> bool;
+  auto InsertPairToLeafPage(const KeyType &key, const ValueType &value, Context &ctx) -> bool;
   // 向internal_page进行插入(SplitLeafPage的辅助函数)
   void InsertPairToInternalPage(Context &ctx, const KeyType &key, const page_id_t &value,
                                 std::optional<const page_id_t> lvalue = std::nullopt);
@@ -171,7 +173,11 @@ class BPlusTree {
   /*合并部分*/
   void MergePage(const KeyType &key, Context &ctx);
   template <typename PageType>
-  void MergePageHelper(Context &ctx, std::deque<int> &res_index);
+  void MergePageHelper(Context &ctx, const KeyType &key);
+  // void MergePageHelper(Context &ctx, std::deque<int> &res_index);
+
+  /* debug 函数 */
+  auto GetNodeInfo(page_id_t page_id, const BPlusTreePage *page) -> std::string;
 
   // member variable
   std::string index_name_;

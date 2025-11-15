@@ -50,10 +50,17 @@ void InsertHelper(BPlusTree<GenericKey<8>, RID, GenericComparator<8>> *tree, con
   RID rid;
 
   for (auto key : keys) {
+    // std::cout << std::this_thread::get_id() << " inserting " << key << "===================" << std::endl;
+
     int64_t value = key & 0xFFFFFFFF;
     rid.Set(static_cast<int32_t>(key >> 32), value);
     index_key.SetFromInteger(key);
     tree->Insert(index_key, rid);
+
+    // tree->Print(tree->Getbpm());
+    // std::cout << std::this_thread::get_id() << " insert printing" << key << "=====================" << std::endl;
+    // std::cout << std::this_thread::get_id() << tree->DrawBPlusTree() << std::endl;
+    // std::cout << std::this_thread::get_id() << " has inserted " << key << "===================" << std::endl;
   }
 }
 
@@ -65,10 +72,20 @@ void InsertHelperSplit(BPlusTree<GenericKey<8>, RID, GenericComparator<8>> *tree
 
   for (auto key : keys) {
     if (static_cast<uint64_t>(key) % total_threads == thread_itr) {
+      // std::mutex write;
+      // std::unique_lock<std::mutex> lock(write);
+      // std::cout << thread_itr << " inserting " << key << "===================" << std::endl;
+      // lock.unlock();
+
       int64_t value = key & 0xFFFFFFFF;
       rid.Set(static_cast<int32_t>(key >> 32), value);
       index_key.SetFromInteger(key);
       tree->Insert(index_key, rid);
+
+      // lock.lock();
+      // // std::cout << tree->DrawBPlusTree() << std::endl;
+      // std::cout << thread_itr << " has inserted " << key << "===================" << std::endl;
+      // lock.unlock();
     }
   }
 }
@@ -79,8 +96,15 @@ void DeleteHelper(BPlusTree<GenericKey<8>, RID, GenericComparator<8>> *tree, con
   GenericKey<8> index_key;
 
   for (auto key : remove_keys) {
+    // std::cout << std::this_thread::get_id() << " deleting " << key << "===================" << std::endl;
+
     index_key.SetFromInteger(key);
     tree->Remove(index_key);
+
+    // tree->Print(tree->Getbpm());
+    // std::cout << std::this_thread::get_id() << " delete printing" << key << "=====================" << std::endl;
+    // std::cout << std::this_thread::get_id() << tree->DrawBPlusTree() << std::endl;
+    // std::cout << std::this_thread::get_id() << " has deleted " << key << "===================" << std::endl;
   }
 }
 
@@ -120,6 +144,7 @@ static const size_t BPM_SIZE = 50;
 
 void InsertTest1Call() {
   for (size_t iter = 0; iter < NUM_ITERS; iter++) {
+    std::cout << "------------------------------------" << std::endl;
     // create KeyComparator and index schema
     auto key_schema = ParseCreateStatement("a bigint");
     GenericComparator<8> comparator(key_schema.get());
@@ -141,6 +166,7 @@ void InsertTest1Call() {
     }
     LaunchParallelTest(2, InsertHelper, &tree, keys);
 
+    // tree.Print(bpm);
     std::vector<RID> rids;
     GenericKey<8> index_key;
     for (auto key : keys) {
@@ -175,6 +201,7 @@ void InsertTest1Call() {
 
 void InsertTest2Call() {
   for (size_t iter = 0; iter < NUM_ITERS; iter++) {
+    std::cout << iter << "------------------------------------" << std::endl;
     // create KeyComparator and index schema
     auto key_schema = ParseCreateStatement("a bigint");
     GenericComparator<8> comparator(key_schema.get());
@@ -196,6 +223,9 @@ void InsertTest2Call() {
     }
     LaunchParallelTest(2, InsertHelperSplit, &tree, keys, 2);
 
+    // std::cout << tree.DrawBPlusTree() << std::endl;
+    // tree.Print(bpm);
+
     std::vector<RID> rids;
     GenericKey<8> index_key;
     for (auto key : keys) {
@@ -207,6 +237,8 @@ void InsertTest2Call() {
       int64_t value = key & 0xFFFFFFFF;
       ASSERT_EQ(rids[0].GetSlotNum(), value);
     }
+
+    // std::cout << iter << " end------------------------------------" << std::endl;
 
     int64_t start_key = 1;
     int64_t current_key = start_key;
@@ -230,6 +262,7 @@ void InsertTest2Call() {
 
 void DeleteTest1Call() {
   for (size_t iter = 0; iter < NUM_ITERS; iter++) {
+    std::cout << iter << "------------------------------------" << std::endl;
     // create KeyComparator and index schema
     auto key_schema = ParseCreateStatement("a bigint");
     GenericComparator<8> comparator(key_schema.get());
@@ -249,6 +282,8 @@ void DeleteTest1Call() {
 
     std::vector<int64_t> remove_keys = {1, 5, 3, 4};
     LaunchParallelTest(2, DeleteHelper, &tree, remove_keys);
+
+    // tree.Print(bpm);
 
     int64_t start_key = 2;
     int64_t current_key = start_key;
@@ -318,6 +353,7 @@ void DeleteTest2Call() {
 
 void MixTest1Call() {
   for (size_t iter = 0; iter < MIXTEST_NUM_ITERS; iter++) {
+    std::cout << iter << "------------------------------------" << std::endl;
     // create KeyComparator and index schema
     auto key_schema = ParseCreateStatement("a bigint");
     GenericComparator<8> comparator(key_schema.get());
@@ -360,6 +396,9 @@ void MixTest1Call() {
       threads[i].join();
     }
 
+    // std::cout << tree.DrawBPlusTree() << std::endl;
+    // tree.Print(bpm);
+
     int64_t size = 0;
 
     for (auto iter = tree.Begin(); iter != tree.End(); ++iter) {
@@ -379,6 +418,7 @@ void MixTest1Call() {
 
 void MixTest2Call() {
   for (size_t iter = 0; iter < MIXTEST_NUM_ITERS; iter++) {
+    // std::cout << iter << "------------------------------------" << std::endl;
     // create KeyComparator and index schema
     auto key_schema = ParseCreateStatement("a bigint");
     GenericComparator<8> comparator(key_schema.get());
@@ -443,27 +483,27 @@ void MixTest2Call() {
   }
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_InsertTest1) {  // NOLINT
+TEST(BPlusTreeConcurrentTest, InsertTest1) {  // NOLINT
   InsertTest1Call();
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_InsertTest2) {  // NOLINT
+TEST(BPlusTreeConcurrentTest, InsertTest2) {  // NOLINT
   InsertTest2Call();
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_DeleteTest1) {  // NOLINT
+TEST(BPlusTreeConcurrentTest, DeleteTest1) {  // NOLINT
   DeleteTest1Call();
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_DeleteTest2) {  // NOLINT
+TEST(BPlusTreeConcurrentTest, DeleteTest2) {  // NOLINT
   DeleteTest2Call();
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_MixTest1) {  // NOLINT
+TEST(BPlusTreeConcurrentTest, MixTest1) {  // NOLINT
   MixTest1Call();
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_MixTest2) {  // NOLINT
+TEST(BPlusTreeConcurrentTest, MixTest2) {  // NOLINT
   MixTest2Call();
 }
 }  // namespace bustub

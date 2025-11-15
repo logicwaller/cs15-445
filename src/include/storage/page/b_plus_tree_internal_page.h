@@ -91,7 +91,7 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   auto SplitHalfPairTo(BPlusTreeInternalPage *another_page, int split_index,
                        std::optional<ValueType> split_value = std::nullopt) -> KeyType;
 
-  void MergePairFrom(BPlusTreeInternalPage *another_page, bool is_another_larger, KeyType insert_key);
+  void MergePairFrom(BPlusTreeInternalPage *another_page, bool is_another_larger, const KeyType &insert_key);
 
   /**
    * @brief For test only, return a string representing all keys in

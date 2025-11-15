@@ -342,6 +342,9 @@ auto BufferPoolManager::WritePage(page_id_t page_id, AccessType access_type) -> 
     std::abort();
   }
 
+  // std::cout << "[tid=" << std::this_thread::get_id() << "] [BPM] get write guard pid=" << page_id
+  //           << " -> frame=" << guard_opt->frame_->frame_id_ << " pin=" << GetPinCount(page_id).value() << std::endl;
+
   return std::move(guard_opt).value();
 }
 

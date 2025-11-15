@@ -40,7 +40,7 @@ INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::GetNextPageId() const -> page_id_t { return next_page_id_; }
 
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::SetNextPageId(page_id_t next_page_id) { next_page_id_ = next_page_id; }
+void B_PLUS_TREE_LEAF_PAGE_TYPE::SetNextPageId(const page_id_t &next_page_id) { next_page_id_ = next_page_id; }
 
 /*
  * Helper method to find and return the key associated with input "index" (a.k.a
@@ -141,10 +141,12 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::MergePairFrom(BPlusTreeLeafPage *another_page, 
       another_page->rid_array_[i] = another_page->rid_array_[move_size + i];
     }
   } else {  // 若another_page更小，则将another的后move_size个键值对移到this的前面
-    for (int i = 0; i < move_size; i++) {
-      // 将this的前move_size键值对整体后移，为新添键值对留空
+    // 将this整体后移move_size个键值对，为新添键值对留空
+    for (int i = this_size - 1; i >= 0; i--) {
       key_array_[move_size + i] = key_array_[i];
       rid_array_[move_size + i] = rid_array_[i];
+    }
+    for (int i = 0; i < move_size; i++) {
       // 将another的后move_size键值对移动到this前
       key_array_[i] = another_page->key_array_[another_size - move_size + i];
       rid_array_[i] = another_page->rid_array_[another_size - move_size + i];

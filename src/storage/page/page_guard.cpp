@@ -195,6 +195,8 @@ WritePageGuard::WritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> f
                                std::shared_ptr<LRUKReplacer> replacer, std::shared_ptr<std::mutex> bpm_latch)
     : IOPageGuard(page_id, std::move(frame), std::move(replacer), std::move(bpm_latch)), guard_lock_(frame_->rwlatch_) {
   frame_->is_dirty_ = true;  // 写入时设置该frame为脏页
+  // std::cout << "[tid=" << std::this_thread::get_id() << "] [WRITE GUARD] Write build pid=" << page_id_
+  //           << " frame=" << frame_->frame_id_ << std::endl;
 }
 
 /**
@@ -213,7 +215,9 @@ WritePageGuard::WritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> f
  * @param that The other page guard.
  */
 WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept
-    : IOPageGuard(std::move(that)), guard_lock_(std::move(that.guard_lock_)) {}
+    : IOPageGuard(std::move(that)), guard_lock_(std::move(that.guard_lock_)) {
+  // std::cout << "[tid=" << std::this_thread::get_id() << "] [GUARD] write move build pid=" << page_id_ << std::endl;
+}
 
 /**
  * @brief The move assignment operator for `WritePageGuard`.
@@ -234,6 +238,8 @@ WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept
  */
 auto WritePageGuard::operator=(WritePageGuard &&that) noexcept -> WritePageGuard & {  // free this原本内容
   if (this != &that) {
+    // std::cout << "error !: [tid=" << std::this_thread::get_id() << "] [GUARD] Write move ctor pid=" << that.page_id_
+    //           << std::endl;
     // 重置this原本内容
     this->Drop();
     guard_lock_ = std::move(that.guard_lock_);
@@ -287,6 +293,8 @@ auto WritePageGuard::IsDirty() const -> bool {
  */
 void WritePageGuard::Drop() {
   if (is_valid_) {
+    // std::cout << "[tid=" << std::this_thread::get_id() << "] [GUARD] Write drop pid=" << page_id_
+    //           << " frame=" << frame_->frame_id_ << std::endl;
     IOPageGuard::Drop();
     guard_lock_.unlock();  // 释放写锁
   }

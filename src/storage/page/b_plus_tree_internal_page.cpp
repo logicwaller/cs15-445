@@ -141,7 +141,7 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::SplitHalfPairTo(BPlusTreeInternalPage *anot
  */
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MergePairFrom(BPlusTreeInternalPage *another_page, bool is_another_larger,
-                                                   KeyType insert_key) {
+                                                   const KeyType &insert_key) {
   int this_size = GetSize();
   int another_size = another_page->GetSize();
 
@@ -170,15 +170,17 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MergePairFrom(BPlusTreeInternalPage *anothe
       another_page->page_id_array_[i] = another_page->page_id_array_[move_size + i];
     }
   } else {  // 若another_page更小，则将another的后move_size个键值对移到this的前面
-    for (int i = 0; i < move_size; i++) {
-      // 将this的前move_size键值对整体后移，为新添键值对留空
+    // 将this整体后移move_size个键值对，为新添键值对留空
+    for (int i = this_size - 1; i >= 0; i--) {
       if (i != 0) {  // 避免访问key_array[0]
         key_array_[move_size + i] = key_array_[i];
       } else {  // i==0时，需要新添本页的键
         key_array_[move_size] = insert_key;
       }
       page_id_array_[move_size + i] = page_id_array_[i];
-      // 将another的后move_size键值对移动到this;this的0处key仍赋值，方便改变父页
+    }
+    // 将another的后move_size键值对移动到this前;this的0处key仍赋值，方便改变父页
+    for (int i = 0; i < move_size; i++) {
       key_array_[i] = another_page->key_array_[another_size - move_size + i];
       page_id_array_[i] = another_page->page_id_array_[another_size - move_size + i];
     }

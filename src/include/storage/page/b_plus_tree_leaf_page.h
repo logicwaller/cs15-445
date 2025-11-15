@@ -62,7 +62,7 @@ class BPlusTreeLeafPage : public BPlusTreePage {
 
   // Helper methods
   auto GetNextPageId() const -> page_id_t;
-  void SetNextPageId(page_id_t next_page_id);
+  void SetNextPageId(const page_id_t &next_page_id);
   auto KeyAt(int index) const -> KeyType;
 
   // 辅助函数
