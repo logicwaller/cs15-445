@@ -166,7 +166,13 @@ class LRUKReplacer {
    *
    * @return std::optinal<size_t>
    */
-  auto GetNodeKTime(const LRUKNode &node) -> std::optional<size_t>;
+  auto GetNodeKTime(const LRUKNode &node) const -> std::optional<size_t>;
+
+  /**
+   * @brief 向node的history中push_back(x)，当history长度大于k_时pop_front()
+   *        即保证history只记录最后k_次访问记录
+   */
+  void PushBackHistory(LRUKNode &node, size_t x) const;
 
   // Remove maybe_unused if you start using them.
   std::unordered_map<frame_id_t, LRUKNode> node_store_;

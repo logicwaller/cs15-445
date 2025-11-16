@@ -27,7 +27,7 @@ auto LRUKReplacer::Evict() -> std::optional<frame_id_t> {
       std::optional<size_t> ktime = GetNodeKTime(pair.second);
 
       if (!ktime.has_value()) {  // 若ktime为inf,返回最早的最近访问frame
-        if (!has_inf) {          // 第一次遇到inf时，重置minx_time,设置has_inf
+        if (!has_inf) {          // 第一次遇到inf时，重置min_time,设置has_inf
           min_time = UINT64_MAX;
           has_inf = true;
         }
@@ -57,7 +57,7 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id, [[maybe_unused]] AccessType
   auto find_frame = node_store_.find(frame_id);
   if (find_frame != node_store_.end()) {  // node_store_存在frame_id,则插入记录
     LRUKNode &find_node = find_frame->second;
-    find_node.history_.push_back(current_timestamp_++);
+    PushBackHistory(find_node, current_timestamp_++);
   } else {
     if (node_store_.size() == replacer_size_) {  // 若超出replacer_size,报错
       BUSTUB_ENSURE(1, "RecordAccess Error: Invalid frame id(size larger than replacer_size)");
@@ -102,14 +102,20 @@ void LRUKReplacer::Remove(frame_id_t frame_id) {
 
 auto LRUKReplacer::Size() -> size_t { return curr_size_; }
 
-auto LRUKReplacer::GetNodeKTime(const LRUKNode &node) -> std::optional<size_t> {
+auto LRUKReplacer::GetNodeKTime(const LRUKNode &node) const -> std::optional<size_t> {
   size_t history_size = node.history_.size();
   if (history_size < k_) {  // 若访问次数小于k_，返回null
     return std::nullopt;
   }
   // 否则返回倒数第k_次访问时间
-  auto tem = std::prev(node.history_.end(), k_);
-  return *tem;
+  return node.history_.front();
+}
+
+void LRUKReplacer::PushBackHistory(LRUKNode &node, size_t x) const {
+  node.history_.push_back(x);
+  if (node.history_.size() > k_) {
+    node.history_.pop_front();
+  }
 }
 
 }  // namespace bustub
