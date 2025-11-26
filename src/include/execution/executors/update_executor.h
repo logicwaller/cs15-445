@@ -66,5 +66,11 @@ class UpdateExecutor : public AbstractExecutor {
 
   /** The child executor to obtain value from */
   std::unique_ptr<AbstractExecutor> child_executor_;
+
+  /** 记录是否已更新过 */
+  bool have_updated_;
+
+  std::vector<std::shared_ptr<IndexInfo>> indexes_;
+  const Schema child_schema_;  // child_schema即为table本身的schema
 };
 }  // namespace bustub

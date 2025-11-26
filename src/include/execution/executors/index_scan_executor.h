@@ -17,6 +17,7 @@
 #include "common/rid.h"
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
+#include "execution/expressions/constant_value_expression.h"
 #include "execution/plans/index_scan_plan.h"
 #include "storage/table/tuple.h"
 
@@ -44,5 +45,13 @@ class IndexScanExecutor : public AbstractExecutor {
  private:
   /** The index scan plan node to be executed. */
   const IndexScanPlanNode *plan_;
+
+  std::shared_ptr<TableInfo> table_info_;
+  std::shared_ptr<IndexInfo> index_info_;
+  BPlusTreeIndexForTwoIntegerColumn *tree_;
+  // 在point lookup时记录访问到第几个pred_key
+  size_t pred_keys_index_;
+  // 在ordered scan时记录访问的iterator
+  std::optional<BPlusTreeIndexIteratorForTwoIntegerColumn> iterator_;
 };
 }  // namespace bustub
