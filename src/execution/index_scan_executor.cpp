@@ -59,7 +59,7 @@ auto IndexScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
         key_value = rcolum->val_;
       }
 
-      Schema tem_schema(std::vector<Column>{Column("index", TypeId::INTEGER)});
+      Schema tem_schema(std::vector<Column>{key_value.GetColumn()});
       Tuple key(std::vector<Value>{key_value}, &tem_schema);
       // 在index内获取key所在的rid
       tree_->ScanKey(key, &result_rid, exec_ctx_->GetTransaction());

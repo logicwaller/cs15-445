@@ -64,8 +64,8 @@ auto UpdateExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     for (const auto &index : indexes_) {
       for (const auto &col_idx : index->index_->GetKeyAttrs()) {
         Value key = child_tuple.GetValue(&plan_->GetChildPlan()->OutputSchema(), col_idx);
-        Schema key_schema(std::vector<Column>{key.GetColumn()});
-        index->index_->DeleteEntry(Tuple(std::vector<Value>{key}, &key_schema), *rid, exec_ctx_->GetTransaction());
+        index->index_->DeleteEntry(Tuple(std::vector<Value>{key}, &index->key_schema_), *rid,
+                                   exec_ctx_->GetTransaction());
       }
     }
 
@@ -86,8 +86,7 @@ auto UpdateExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     for (const auto &index : indexes_) {
       for (const auto &col_idx : index->index_->GetKeyAttrs()) {
         Value key = new_tuple.GetValue(&plan_->GetChildPlan()->OutputSchema(), col_idx);
-        Schema key_schema(std::vector<Column>{key.GetColumn()});
-        index->index_->InsertEntry(Tuple(std::vector<Value>{key}, &key_schema), insert_rid.value(),
+        index->index_->InsertEntry(Tuple(std::vector<Value>{key}, &index->key_schema_), insert_rid.value(),
                                    exec_ctx_->GetTransaction());
       }
     }
