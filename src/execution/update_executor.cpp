@@ -62,11 +62,8 @@ auto UpdateExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     tuple_meta.is_deleted_ = false;                          // 将is_deleted_设为false便于下面插入使用
     // 对每个index进行删除
     for (const auto &index : indexes_) {
-      for (const auto &col_idx : index->index_->GetKeyAttrs()) {
-        Value key = child_tuple.GetValue(&plan_->GetChildPlan()->OutputSchema(), col_idx);
-        index->index_->DeleteEntry(Tuple(std::vector<Value>{key}, &index->key_schema_), *rid,
-                                   exec_ctx_->GetTransaction());
-      }
+      Tuple key = child_tuple.KeyFromTuple(table_info_->schema_, index->key_schema_, index->index_->GetKeyAttrs());
+      index->index_->DeleteEntry(key, *rid, exec_ctx_->GetTransaction());
     }
 
     // 进行插入
@@ -84,11 +81,8 @@ auto UpdateExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     }
     // 对每个index进行插入
     for (const auto &index : indexes_) {
-      for (const auto &col_idx : index->index_->GetKeyAttrs()) {
-        Value key = new_tuple.GetValue(&plan_->GetChildPlan()->OutputSchema(), col_idx);
-        index->index_->InsertEntry(Tuple(std::vector<Value>{key}, &index->key_schema_), insert_rid.value(),
-                                   exec_ctx_->GetTransaction());
-      }
+      Tuple key = new_tuple.KeyFromTuple(table_info_->schema_, index->key_schema_, index->index_->GetKeyAttrs());
+      index->index_->InsertEntry(key, insert_rid.value(), exec_ctx_->GetTransaction());
     }
 
     update_rows++;

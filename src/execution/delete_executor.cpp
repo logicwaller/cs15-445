@@ -54,11 +54,8 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     table_info_->table_->UpdateTupleMeta(tuple_meta, *rid);
     // 在index里删除相应记录
     for (const auto &index : indexes_) {
-      for (const auto &col_idx : index->index_->GetKeyAttrs()) {
-        Value key = child_tuple.GetValue(&plan_->GetChildPlan()->OutputSchema(), col_idx);
-        index->index_->DeleteEntry(Tuple(std::vector<Value>{key}, &index->key_schema_), *rid,
-                                   exec_ctx_->GetTransaction());
-      }
+      Tuple key = child_tuple.KeyFromTuple(table_info_->schema_, index->key_schema_, index->index_->GetKeyAttrs());
+      index->index_->DeleteEntry(key, *rid, exec_ctx_->GetTransaction());
     }
 
     delete_rows++;

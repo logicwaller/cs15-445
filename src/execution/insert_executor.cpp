@@ -60,11 +60,8 @@ auto InsertExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
 
     // 对每个index都插入相关数据
     for (const auto &index : indexes_) {
-      for (const auto &col_idx : index->index_->GetKeyAttrs()) {
-        Value key = child_tuple.GetValue(&plan_->GetChildPlan()->OutputSchema(), col_idx);
-        index->index_->InsertEntry(Tuple(std::vector<Value>{key}, &index->key_schema_), insert_rid.value(),
-                                   exec_ctx_->GetTransaction());
-      }
+      Tuple key = child_tuple.KeyFromTuple(table_info_->schema_, index->key_schema_, index->index_->GetKeyAttrs());
+      index->index_->InsertEntry(key, insert_rid.value(), exec_ctx_->GetTransaction());
     }
     insert_rows++;
   }
