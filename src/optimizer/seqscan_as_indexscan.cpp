@@ -2,6 +2,7 @@
 
 #include "execution/expressions/column_value_expression.h"
 #include "execution/expressions/comparison_expression.h"
+#include "execution/expressions/constant_value_expression.h"
 #include "execution/expressions/logic_expression.h"
 #include "execution/plans/index_scan_plan.h"
 #include "execution/plans/seq_scan_plan.h"
@@ -22,7 +23,8 @@ auto Optimizer::OptimizeSeqScanAsIndexScan(const bustub::AbstractPlanNodeRef &pl
     const auto &indexes = catalog_.GetTableIndexes(seq_scan_plan.table_name_);
     if (seq_scan_plan.filter_predicate_ != nullptr) {  // 当seq_scan的filter存在时，检验是否可以优化为index_scan
       bool can_be_optimized = true;                    // 记录是否能被优化
-      std::optional<uint32_t> col_idx;                 // 记录找到的列index，只能有一个
+      std::optional<uint32_t> col_idx;                 // 记录找到的列的下标，只能有一个
+      std::vector<Value> find_value;                   // 记录找到的常量,保证不重复
       index_oid_t index_oid;                           // 记录找到索引的index_oid
       std::vector<AbstractExpressionRef> pred_keys;    // 记录被优化后在index_scan中的pred_key,若为空则说明不能被优化
 
@@ -44,12 +46,16 @@ auto Optimizer::OptimizeSeqScanAsIndexScan(const bustub::AbstractPlanNodeRef &pl
             if (compare->comp_type_ == ComparisonType::Equal) {
               auto lcolum = std::dynamic_pointer_cast<ColumnValueExpression>(lchild);
               auto rcolum = std::dynamic_pointer_cast<ColumnValueExpression>(rchild);
-              if (lcolum != nullptr && rcolum != nullptr) {  // 若比较的左右child都为列，则不能被优化
+              auto rvalue = std::dynamic_pointer_cast<ConstantValueExpression>(rchild);  // 记录查找到的常量
+              if (lcolum != nullptr && rcolum != nullptr) {  // 若比较的左右child都为column，则不能被优化
                 can_be_optimized = false;
                 break;
               }
-              if (lcolum == nullptr && rcolum != nullptr) {  // 若右为column左为值，则交换二者，即保证lcolumn一定有值
+
+              if (lcolum == nullptr &&
+                  rcolum != nullptr) {  // 若右为column 左为值，则交换二者，即保证左一定为column 右一定为值
                 lcolum = std::move(rcolum);
+                rvalue = std::dynamic_pointer_cast<ConstantValueExpression>(lchild);
               }
 
               // 检验是否只有一个列
@@ -67,7 +73,20 @@ auto Optimizer::OptimizeSeqScanAsIndexScan(const bustub::AbstractPlanNodeRef &pl
                 auto finded = std::find(keyAttrs.begin(), keyAttrs.end(), col);
                 if (finded != keyAttrs.end()) {  // 若列对应一个index
                   index_oid = index->index_oid_;
-                  pred_keys.push_back(seq_child);  // 此时的seq_child即为一个pred_keys
+
+                  // 查找find_value，看是否有与当前rvalue重复的值
+
+                  bool has_duplated = false;
+                  for (auto v : find_value) {
+                    if (v.CompareEquals(rvalue->val_) == CmpBool::CmpTrue) {
+                      has_duplated = true;
+                      break;
+                    }
+                  }
+                  if (!has_duplated) {  // 只有不重复才插入pred_keys
+                    find_value.push_back(rvalue->val_);
+                    pred_keys.push_back(rvalue);  // 此时的seq_child即为一个pred_keys
+                  }
                   break;
                 }
               }
@@ -85,7 +104,7 @@ auto Optimizer::OptimizeSeqScanAsIndexScan(const bustub::AbstractPlanNodeRef &pl
       // 若能被优化，则返回相应IndexScanPlanNode
       if (can_be_optimized && !pred_keys.empty()) {
         return std::make_shared<IndexScanPlanNode>(seq_scan_plan.output_schema_, seq_scan_plan.table_oid_, index_oid,
-                                                   nullptr, pred_keys);
+                                                   seq_scan_plan.filter_predicate_, pred_keys);
       }
     }
   }

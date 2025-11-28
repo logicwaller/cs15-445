@@ -45,24 +45,13 @@ auto IndexScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       }
 
       // 获取要查找的key;获取左右兄弟中的constant_value_expression
-      const auto &compare = plan_->pred_keys_[pred_keys_index_++];
-      const auto &lchild = compare->GetChildAt(0);
-      const auto &rchild = compare->GetChildAt(1);
-      auto lcolum = std::dynamic_pointer_cast<ConstantValueExpression>(lchild);
-      auto rcolum = std::dynamic_pointer_cast<ConstantValueExpression>(rchild);
-      Value key_value;
-      BUSTUB_ENSURE(lcolum || rcolum, "index_scan error: No constant value");
-      // 左右child都有可能是const_value，故这里这样写
-      if (lcolum) {
-        key_value = lcolum->val_;
-      } else if (rcolum) {
-        key_value = rcolum->val_;
-      }
+      const auto &const_value =
+          std::dynamic_pointer_cast<ConstantValueExpression>(plan_->pred_keys_[pred_keys_index_++]);
 
-      Schema tem_schema(std::vector<Column>{key_value.GetColumn()});
-      Tuple key(std::vector<Value>{key_value}, &tem_schema);
+      Schema tem_schema(std::vector<Column>{const_value->val_.GetColumn()});
       // 在index内获取key所在的rid
-      tree_->ScanKey(key, &result_rid, exec_ctx_->GetTransaction());
+      tree_->ScanKey(Tuple(std::vector<Value>{const_value->val_}, &tem_schema), &result_rid,
+                     exec_ctx_->GetTransaction());
     }
 
     // 遍历查找到的rid(由于本数据库不支持多索引，所以result_rid只会有一个)
