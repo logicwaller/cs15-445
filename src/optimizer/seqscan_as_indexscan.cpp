@@ -4,6 +4,7 @@
 #include "execution/expressions/comparison_expression.h"
 #include "execution/expressions/constant_value_expression.h"
 #include "execution/expressions/logic_expression.h"
+#include "execution/plans/aggregation_plan.h"
 #include "execution/plans/index_scan_plan.h"
 #include "execution/plans/seq_scan_plan.h"
 
@@ -24,7 +25,7 @@ auto Optimizer::OptimizeSeqScanAsIndexScan(const bustub::AbstractPlanNodeRef &pl
     if (seq_scan_plan.filter_predicate_ != nullptr) {  // 当seq_scan的filter存在时，检验是否可以优化为index_scan
       bool can_be_optimized = true;                    // 记录是否能被优化
       std::optional<uint32_t> col_idx;                 // 记录找到的列的下标，只能有一个
-      std::vector<Value> find_value;                   // 记录找到的常量,保证不重复
+      std::unordered_set<AggregateKey> find_value;     // 记录找到的常量,保证不重复
       index_oid_t index_oid;                           // 记录找到索引的index_oid
       std::vector<AbstractExpressionRef> pred_keys;    // 记录被优化后在index_scan中的pred_key,若为空则说明不能被优化
 
@@ -75,17 +76,10 @@ auto Optimizer::OptimizeSeqScanAsIndexScan(const bustub::AbstractPlanNodeRef &pl
                   index_oid = index->index_oid_;
 
                   // 查找find_value，看是否有与当前rvalue重复的值
-
-                  bool has_duplated = false;
-                  for (auto v : find_value) {
-                    if (v.CompareEquals(rvalue->val_) == CmpBool::CmpTrue) {
-                      has_duplated = true;
-                      break;
-                    }
-                  }
-                  if (!has_duplated) {  // 只有不重复才插入pred_keys
-                    find_value.push_back(rvalue->val_);
-                    pred_keys.push_back(rvalue);  // 此时的seq_child即为一个pred_keys
+                  AggregateKey tem{std::vector<Value>{rvalue->val_}};
+                  if (find_value.find(tem) == find_value.end()) {
+                    pred_keys.push_back(rvalue);
+                    find_value.insert(tem);
                   }
                   break;
                 }
