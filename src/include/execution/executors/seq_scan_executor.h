@@ -51,6 +51,6 @@ class SeqScanExecutor : public AbstractExecutor {
   /** The sequential scan plan node to be executed */
   const SeqScanPlanNode *plan_;
 
-  TableIterator iterator_;  // 记录当前表的遍历到的iterator
+  std::unique_ptr<TableIterator> iterator_;  // 记录当前表的遍历到的iterator
 };
 }  // namespace bustub
