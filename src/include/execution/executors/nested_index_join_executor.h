@@ -24,6 +24,7 @@
 #include "execution/plans/nested_index_join_plan.h"
 #include "storage/table/tmp_tuple.h"
 #include "storage/table/tuple.h"
+#include "type/value_factory.h"
 
 namespace bustub {
 
@@ -48,7 +49,29 @@ class NestIndexJoinExecutor : public AbstractExecutor {
   auto Next(Tuple *tuple, RID *rid) -> bool override;
 
  private:
+  /**
+   * 获取一个tuple的所有Value;若is_null为真则返回全为null的value
+   */
+  auto GetAllValueFromTuple(const Tuple &tuple, const Schema &schema, bool is_null) const -> std::vector<Value>;
+
   /** The nested index join plan node. */
   const NestedIndexJoinPlanNode *plan_;
+
+  std::unique_ptr<AbstractExecutor> child_executor_;
+
+  // 记录catalog相关信息
+  std::shared_ptr<IndexInfo> index_info_;
+  std::shared_ptr<TableInfo> table_info_;
+
+  // 记录left_tuple相关信息
+  Tuple left_tuple_;
+  SchemaRef left_schema_;
+  bool has_matched_;
+
+  // 记录在右child匹配到的tuple的rid
+  std::vector<RID> match_res_;
+
+  // 记录最终join后的schema
+  SchemaRef join_schema_;
 };
 }  // namespace bustub

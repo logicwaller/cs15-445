@@ -72,12 +72,58 @@ class SimpleAggregationHashTable {
    */
   void CombineAggregateValues(AggregateValue *result, const AggregateValue &input) {
     for (uint32_t i = 0; i < agg_exprs_.size(); i++) {
+      Value input_value;
+      Value res_value;
       switch (agg_types_[i]) {
         case AggregationType::CountStarAggregate:
+          // count star无论如何都++
+          res_value = result->aggregates_[i];
+          result->aggregates_[i] = res_value.Add(Value(res_value.GetTypeId(), 1));
+          break;
         case AggregationType::CountAggregate:
+          // count只在input的值不为空时才++
+          input_value = input.aggregates_[i];
+          if (!input_value.IsNull()) {
+            res_value = result->aggregates_[i];
+            if (res_value.IsNull()) {  // 若res_value为null，则设置为1
+              result->aggregates_[i] = Value(res_value.GetTypeId(), 1);
+            } else {  // 否则res_value++
+              result->aggregates_[i] = res_value.Add(Value(res_value.GetTypeId(), 1));
+            }
+          }
+          break;
         case AggregationType::SumAggregate:
+          input_value = input.aggregates_[i];
+          if (!input_value.IsNull()) {
+            res_value = result->aggregates_[i];
+            if (res_value.IsNull()) {  // 若res_value为null，则设置为input_value
+              result->aggregates_[i] = input_value;
+            } else {  // 否则res_value += input_value
+              result->aggregates_[i] = res_value.Add(input_value);
+            }
+          }
+          break;
         case AggregationType::MinAggregate:
+          input_value = input.aggregates_[i];
+          if (!input_value.IsNull()) {
+            res_value = result->aggregates_[i];
+            if (res_value.IsNull()) {  // 若res_value为null，则设置为input_value
+              result->aggregates_[i] = input_value;
+            } else {  // 否则res_value = min(res_value, input_value)
+              result->aggregates_[i] = res_value.Min(input_value);
+            }
+          }
+          break;
         case AggregationType::MaxAggregate:
+          input_value = input.aggregates_[i];
+          if (!input_value.IsNull()) {
+            res_value = result->aggregates_[i];
+            if (res_value.IsNull()) {  // 若res_value为null，则设置为input_value
+              result->aggregates_[i] = input_value;
+            } else {  // 否则res_value = max(res_value, input_value)
+              result->aggregates_[i] = res_value.Max(input_value);
+            }
+          }
           break;
       }
     }
@@ -93,6 +139,16 @@ class SimpleAggregationHashTable {
       ht_.insert({agg_key, GenerateInitialAggregateValue()});
     }
     CombineAggregateValues(&ht_[agg_key], agg_val);
+  }
+
+  /**
+   *  初始化一个空的agg_key,赋值为默认值
+   */
+  void InitKey() {
+    AggregateKey agg_key{};
+    if (ht_.count(agg_key) == 0) {
+      ht_.insert({agg_key, GenerateInitialAggregateValue()});
+    }
   }
 
   /**
@@ -203,9 +259,9 @@ class AggregationExecutor : public AbstractExecutor {
   std::unique_ptr<AbstractExecutor> child_executor_;
 
   /** Simple aggregation hash table */
-  // TODO(Student): Uncomment SimpleAggregationHashTable aht_;
+  SimpleAggregationHashTable aht_;
 
   /** Simple aggregation hash table iterator */
-  // TODO(Student): Uncomment SimpleAggregationHashTable::Iterator aht_iterator_;
+  SimpleAggregationHashTable::Iterator aht_iterator_;
 };
 }  // namespace bustub
