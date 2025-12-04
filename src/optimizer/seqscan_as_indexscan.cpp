@@ -41,7 +41,7 @@ auto Optimizer::OptimizeSeqScanAsIndexScan(const bustub::AbstractPlanNodeRef &pl
             for (const auto &tem_child : seq_child->GetChildren()) {
               tem_children.push_back(tem_child);
             }
-          } else if (compare) {  // 若是compare，则筛选其中=的部分，检查是否有作为索引的列
+          } else if (compare) {  // 若是compare，则判断是否只有=判断，检查是否有作为索引的列
             const auto &lchild = seq_child->GetChildAt(0);
             const auto &rchild = seq_child->GetChildAt(1);
             if (compare->comp_type_ == ComparisonType::Equal) {
@@ -84,6 +84,9 @@ auto Optimizer::OptimizeSeqScanAsIndexScan(const bustub::AbstractPlanNodeRef &pl
                   break;
                 }
               }
+            } else {  // 若出现非equal的比较，则不能被优化
+              can_be_optimized = false;
+              break;
             }
           }
         }
