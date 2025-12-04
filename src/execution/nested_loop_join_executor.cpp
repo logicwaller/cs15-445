@@ -43,13 +43,13 @@ void NestedLoopJoinExecutor::Init() {
 }
 
 auto NestedLoopJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
+  // 先检验左child是否遍历结束，防止left_child一开始即为空
+  if (!left_status_) {
+    return false;
+  }
+
   Tuple right_tuple;
   while (true) {
-    // 先检验左child是否遍历结束，若是则直接返回false
-    if (!left_status_) {
-      return false;
-    }
-
     // 遍历右child,检验是否有能匹配的tuple
     auto rstatus = right_executor_->Next(&right_tuple, rid);
     if (!rstatus) {  // 若遍历所有的right_child都无法匹配
@@ -68,6 +68,11 @@ auto NestedLoopJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       // 取left_exec的下一个tuple
       left_status_ = left_executor_->Next(&left_tuple_, rid);
       has_matched_ = false;  // 重置has_matched_
+      // 检验左child是否遍历结束，若是则直接返回false
+      if (!left_status_) {
+        return false;
+      }
+
       // 重置right_executor_
       right_executor_->Init();
     } else {

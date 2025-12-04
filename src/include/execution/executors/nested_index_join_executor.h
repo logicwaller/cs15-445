@@ -66,7 +66,6 @@ class NestIndexJoinExecutor : public AbstractExecutor {
   // 记录left_tuple相关信息
   Tuple left_tuple_;
   SchemaRef left_schema_;
-  bool has_matched_;
 
   // 记录在右child匹配到的tuple的rid
   std::vector<RID> match_res_;

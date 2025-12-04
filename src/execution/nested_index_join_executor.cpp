@@ -31,8 +31,6 @@ void NestIndexJoinExecutor::Init() {
   child_executor_->Init();
   // 初始化left_schema_
   left_schema_ = plan_->GetChildPlan()->output_schema_;
-  // 初始化时由于未获取left_tuple，故设has_matched为true
-  has_matched_ = true;
   // 初始化join_schema_
   std::vector<Column> tem_colum{left_schema_->GetColumns()};
   tem_colum.insert(tem_colum.end(), plan_->inner_table_schema_->GetColumns().begin(),
@@ -44,22 +42,9 @@ void NestIndexJoinExecutor::Init() {
 auto NestIndexJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   while (true) {
     if (match_res_.empty()) {  // 若match_res为空，则寻找并进行匹配
-      if (plan_->GetJoinType() == JoinType::LEFT &&
-          !has_matched_) {  // 若是left_join且未匹配过，则返回right_tuple为null的tuple
-        std::vector<Value> lvalues(GetAllValueFromTuple(left_tuple_, *left_schema_, false));
-        std::vector<Value> rvalues(GetAllValueFromTuple(Tuple(), plan_->InnerTableSchema(), true));
-        lvalues.insert(lvalues.end(), rvalues.begin(), rvalues.end());
-        *tuple = Tuple(lvalues, join_schema_.get());
-
-        // 重置has_matched_,设为true以便下一次循环直接获取下一个left_tuple
-        has_matched_ = true;
-        return true;
-      }
-
       // 获取下一个left_tuple
       bool left_status = child_executor_->Next(&left_tuple_, rid);
-      has_matched_ = false;  // 此次的left_tuple未匹配到
-      if (!left_status) {    // 若left_child已遍历结束，则返回false
+      if (!left_status) {  // 若left_child已遍历结束，则返回false
         return false;
       }
 
@@ -69,12 +54,20 @@ auto NestIndexJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       Tuple key_tuple(std::vector<Value>{key}, &key_schema);
       // 在index内查找匹配key的RID
       index_info_->index_->ScanKey(key_tuple, &match_res_, exec_ctx_->GetTransaction());
+
+      if (plan_->GetJoinType() == JoinType::LEFT &&
+          match_res_.empty()) {  // 若是left_join且未匹配过，则返回right_tuple为null的tuple
+        std::vector<Value> lvalues(GetAllValueFromTuple(left_tuple_, *left_schema_, false));
+        std::vector<Value> rvalues(GetAllValueFromTuple(Tuple(), plan_->InnerTableSchema(), true));
+        lvalues.insert(lvalues.end(), rvalues.begin(), rvalues.end());
+        *tuple = Tuple(lvalues, join_schema_.get());
+        return true;
+      }
     } else {
       // 获取match_res_中的rid
       RID rid = match_res_.back();
       match_res_.pop_back();
       auto right_tuple = table_info_->table_->GetTuple(rid).second;
-      has_matched_ = true;  // 此次left_tuple已匹配到
       // 返回join后的结果
       std::vector<Value> lvalues(GetAllValueFromTuple(left_tuple_, *left_schema_, false));
       std::vector<Value> rvalues(GetAllValueFromTuple(right_tuple, plan_->InnerTableSchema(), false));
