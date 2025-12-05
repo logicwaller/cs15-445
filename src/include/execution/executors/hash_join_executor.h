@@ -17,8 +17,10 @@
 
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
+#include "execution/plans/aggregation_plan.h"
 #include "execution/plans/hash_join_plan.h"
 #include "storage/table/tuple.h"
+#include "type/value_factory.h"
 
 namespace bustub {
 
@@ -52,8 +54,29 @@ class HashJoinExecutor : public AbstractExecutor {
   auto GetOutputSchema() const -> const Schema & override { return plan_->OutputSchema(); };
 
  private:
+  /** 获取给定tuple的join_key，is_left表示是否为left_child */
+  auto MakeGroupByKey(const Tuple *tuple, bool is_left) -> AggregateKey;
+
+  /** 获取一个tuple的所有value；若is_null为真则返回相应的null_value */
+  auto GetAllValueFromTuple(const Tuple &tuple, const Schema &schema, bool is_null) const -> std::vector<Value>;
+
   /** The HashJoin plan node to be executed. */
   const HashJoinPlanNode *plan_;
+
+  std::unique_ptr<AbstractExecutor> left_child_;
+  std::unique_ptr<AbstractExecutor> right_child_;
+  SchemaRef left_schema_;
+  SchemaRef right_schema_;
+
+  // 记录left_tuple相关状态
+  Tuple left_tuple_;
+  // 记录匹配到当前left_tuple的right_tuple
+  std::vector<Tuple> match_res_;
+  // 记录join后的schema
+  SchemaRef join_schema_;
+
+  // 记录right_child中以join_key为键，所构建的哈希表(这里复用aggregateKey用于hash)
+  std::unordered_map<AggregateKey, std::vector<Tuple>> hash_map_;
 };
 
 }  // namespace bustub
