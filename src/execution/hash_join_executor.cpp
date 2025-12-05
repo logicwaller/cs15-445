@@ -41,13 +41,9 @@ void HashJoinExecutor::Init() {
   join_schema_ = std::make_shared<Schema>(tem_schema);
 
   // 对于right_child构建hash表
-  while (true) {
-    Tuple right_tuple;
-    RID tem_rid;
-    auto status = right_child_->Next(&right_tuple, &tem_rid);
-    if (!status) {
-      break;
-    }
+  Tuple right_tuple;
+  RID tem_rid;
+  while (right_child_->Next(&right_tuple, &tem_rid)) {
     hash_map_[MakeGroupByKey(&right_tuple, false)].push_back(right_tuple);
   }
 }
