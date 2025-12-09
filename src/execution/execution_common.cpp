@@ -22,10 +22,34 @@ namespace bustub {
 
 TupleComparator::TupleComparator(std::vector<OrderBy> order_bys) : order_bys_(std::move(order_bys)) {}
 
-auto TupleComparator::operator()(const SortEntry &entry_a, const SortEntry &entry_b) const -> bool { return false; }
+auto TupleComparator::operator()(const SortEntry &entry_a, const SortEntry &entry_b) const -> bool {
+  int s = entry_a.first.size();
+  for (int i = 0; i < s; i++) {
+    Value a = entry_a.first[i];
+    Value b = entry_b.first[i];
+    if (a.CompareEquals(b) == CmpBool::CmpTrue) {  // 若相等，则比较下一个order_by
+      continue;
+    }
+
+    switch (order_bys_[i].first) {
+      case OrderByType::DEFAULT:  // DEFAULT和ASC行为一致
+      case OrderByType::ASC:
+        return a.CompareLessThan(b) == CmpBool::CmpTrue;
+      case OrderByType::DESC:
+        return a.CompareGreaterThan(b) == CmpBool::CmpTrue;
+      case OrderByType::INVALID:
+        BUSTUB_ENSURE(false, "invalid compare type");
+    }
+  }
+  return false;
+}
 
 auto GenerateSortKey(const Tuple &tuple, const std::vector<OrderBy> &order_bys, const Schema &schema) -> SortKey {
-  return {};
+  SortKey res;
+  for (const auto &order_by : order_bys) {
+    res.push_back(order_by.second->Evaluate(&tuple, schema));
+  }
+  return res;
 }
 
 /**
