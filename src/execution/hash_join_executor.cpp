@@ -95,14 +95,15 @@ auto HashJoinExecutor::MakeGroupByKey(const Tuple *tuple, bool is_left) -> Aggre
     schema = right_schema_;
   }
 
+  keys.resize(keys.size());
   for (const auto &expr : plans) {
     keys.emplace_back(expr->Evaluate(tuple, *schema));
   }
   return {keys};
 }
 
-auto HashJoinExecutor::GetAllValueFromTuple(const Tuple &tuple, const Schema &schema, bool is_null) const
-    -> std::vector<Value> {
+auto HashJoinExecutor::GetAllValueFromTuple(const Tuple &tuple, const Schema &schema,
+                                            bool is_null) const -> std::vector<Value> {
   std::vector<Value> res;
   if (!is_null) {
     uint32_t column_size = schema.GetColumnCount();

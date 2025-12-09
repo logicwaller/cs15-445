@@ -36,9 +36,32 @@ void ExternalMergeSortExecutor<K>::Init() {
   child_schema_ = plan_->GetChildPlan()->output_schema_;
 
   /* 进行并归排序 */
-  TupleComparator comp(plan_->GetOrderBy());  // 记录比较器
-  std::vector<MergeSortRun> runs;             // 记录归并排序的run
+  // 将child_exec的tuple插入sort_page中
+  std::vector<MergeSortRun> runs;         // 记录归并排序的run
+  if (!SortChildTupleToSortPage(runs)) {  // 若一个tuple都未插入，则返回
+    is_empty_ = true;
+    return;
+  }
 
+  // 对于sort_pages进行归并排序
+  sort_page_run_ = ExecMergeSort(runs);  // 记录排序结果
+  run_it_ = sort_page_run_.Begin();
+}
+
+template <size_t K>
+auto ExternalMergeSortExecutor<K>::Next(Tuple *tuple, RID *rid) -> bool {
+  if (is_empty_ || run_it_ == sort_page_run_.End()) {  // 若child_exec未返回任何tuple或已遍历完，则返回false
+    return false;
+  }
+
+  *tuple = *run_it_;
+  ++run_it_;
+  return true;
+}
+
+template <size_t K>
+auto ExternalMergeSortExecutor<K>::SortChildTupleToSortPage(std::vector<MergeSortRun> &runs) -> bool {
+  TupleComparator comp(plan_->GetOrderBy());  // 记录比较器
   // 先将child_exec_内的所有page全读入sort_page中
   Tuple tuple;
   RID rid;
@@ -46,7 +69,7 @@ void ExternalMergeSortExecutor<K>::Init() {
   bool is_end = false;                   // 记录child_exec_是否已遍历完
   while (true) {
     // 若插入当前tuple后就超出一个sortpage的容量，则将现有的tuple插入
-    if (!SortPage::canBeInsert(tuple.GetLength(), sorted_tuples.size() + 1) || is_end) {
+    if (!SortPage::CanBeInsert(tuple.GetLength(), sorted_tuples.size() + 1) || is_end) {
       // 将tuple排序
       std::sort(sorted_tuples.begin(), sorted_tuples.end(), comp);
       // 新建sort_page
@@ -70,19 +93,19 @@ void ExternalMergeSortExecutor<K>::Init() {
     }
     // 插入当前tuple
     if (child_executor_->Next(&tuple, &rid)) {
-      sorted_tuples.push_back({GenerateSortKey(tuple, plan_->GetOrderBy(), *child_schema_), tuple});
+      sorted_tuples.emplace_back(GenerateSortKey(tuple, plan_->GetOrderBy(), *child_schema_), tuple);
     } else {
       is_end = true;
     }
   }
 
-  // 判断child是否为空
-  if (runs.size() == 1 && sorted_tuples.empty()) {
-    is_empty_ = true;
-    return;
-  }
+  // 若只有一个run且其sorted_tuples为空则说明未插入tuple,返回false
+  return !(runs.size() == 1 && sorted_tuples.empty());
+}
 
-  // 对于sort_pages进行归并排序
+template <size_t K>
+auto ExternalMergeSortExecutor<K>::ExecMergeSort(std::vector<MergeSortRun> &runs) -> MergeSortRun {
+  TupleComparator comp(plan_->GetOrderBy());  // 记录比较器
   while (runs.size() != 1) {
     std::vector<MergeSortRun> next_run;  // 记录下一轮归并的runs
     int s = runs.size();
@@ -140,26 +163,13 @@ void ExternalMergeSortExecutor<K>::Init() {
       }
 
       // 生成并插入新的run
-      next_run.push_back(MergeSortRun(pages, bpm_));
+      next_run.emplace_back(MergeSortRun(pages, bpm_));
     }
     // 遍历next_run
     runs = next_run;
   }
-
-  /** 记录排序结果 */
-  sort_page_run_ = runs.back();
-  run_it_ = sort_page_run_.Begin();
-}
-
-template <size_t K>
-auto ExternalMergeSortExecutor<K>::Next(Tuple *tuple, RID *rid) -> bool {
-  if (is_empty_ || run_it_ == sort_page_run_.End()) {
-    return false;
-  }
-
-  *tuple = *run_it_;
-  ++run_it_;
-  return true;
+  // 返回runs的唯一一个值
+  return runs.back();
 }
 
 template class ExternalMergeSortExecutor<2>;

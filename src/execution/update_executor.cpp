@@ -69,7 +69,7 @@ auto UpdateExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     // 进行插入
     std::vector<Value> values{};
     values.reserve(GetOutputSchema().GetColumnCount());
-    for (auto expr : plan_->target_expressions_) {
+    for (auto &expr : plan_->target_expressions_) {
       values.push_back(expr->Evaluate(&child_tuple, child_schema_));
     }
     Tuple new_tuple = Tuple{values, &child_schema_};

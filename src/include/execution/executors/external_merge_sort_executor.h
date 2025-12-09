@@ -41,7 +41,7 @@ class SortPage {
   void Init() { tuples_num_ = 0; }
 
   // 判断n个size为tuple_size的tuples能否插入sortpage中
-  static auto canBeInsert(uint32_t tuple_size, int n) -> bool {
+  static auto CanBeInsert(uint32_t tuple_size, int n) -> bool {
     return SORT_PAGE_HEADER_SIZE + n * (TUPLE_OFFSET_SIZE + tuple_size + sizeof(int32_t)) <= BUSTUB_PAGE_SIZE;
   }
 
@@ -131,6 +131,10 @@ class MergeSortRun {
 
       auto page = page_guard_.As<SortPage>();
       if (tuple_index_ >= page->GetTupleNum()) {  // 若读完当前page，则获取下一个page
+        // 删除该页
+        page_guard_.Drop();
+        run_->bpm_->DeletePage(run_->pages_[page_index_]);
+        // 获取下一页
         page_index_++;
         if (page_index_ != run_->pages_.size()) {
           page_guard_ = run_->bpm_->ReadPage(run_->pages_[page_index_]);
@@ -191,7 +195,7 @@ class MergeSortRun {
     // 记录当前读取到第几个pages_
     uint32_t page_index_;
     // 记录当前page_guard
-    ReadPageGuard page_guard_;
+    ReadPageGuard page_guard_{};
     // 记录当前读取到该page的第几个tuple
     uint32_t tuple_index_;
   };
@@ -248,6 +252,14 @@ class ExternalMergeSortExecutor : public AbstractExecutor {
   auto GetOutputSchema() const -> const Schema & override { return plan_->OutputSchema(); }
 
  private:
+  /** 将child_exec的tuple全插入sortpage中，将插入结果写入runs中
+      若返回false则说明未插入任何tuple
+  */
+  auto SortChildTupleToSortPage(std::vector<MergeSortRun> &runs) -> bool;
+
+  /** 对传入的runs进行归并排序,返回最终排序结果 */
+  auto ExecMergeSort(std::vector<MergeSortRun> &runs) -> MergeSortRun;
+
   /** The sort plan node to be executed */
   const SortPlanNode *plan_;
 
@@ -261,6 +273,7 @@ class ExternalMergeSortExecutor : public AbstractExecutor {
   MergeSortRun sort_page_run_;
   MergeSortRun::Iterator run_it_;
 
+  // 记录child_exec是否返回tuple
   bool is_empty_;
 
   BufferPoolManager *bpm_;

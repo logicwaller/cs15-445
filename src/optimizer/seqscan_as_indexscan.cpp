@@ -22,10 +22,10 @@ auto Optimizer::OptimizeSeqScanAsIndexScan(const bustub::AbstractPlanNodeRef &pl
     const auto &seq_scan_plan = dynamic_cast<const SeqScanPlanNode &>(*optimized_plan);
     if (seq_scan_plan.filter_predicate_ != nullptr) {  // 当seq_scan的filter存在时，检验是否可以优化为index_scan
       const auto &indexes = catalog_.GetTableIndexes(seq_scan_plan.table_name_);
-      bool can_be_optimized = true;                  // 记录是否能被优化
-      std::optional<uint32_t> col_idx;               // 记录找到的列的下标，只能有一个
-      std::unordered_set<AggregateKey> find_value;   // 记录找到的常量,保证不重复
-      index_oid_t index_oid;                         // 记录找到索引的index_oid
+      bool can_be_optimized = true;                 // 记录是否能被优化
+      std::optional<uint32_t> col_idx;              // 记录找到的列的下标，只能有一个
+      std::unordered_set<AggregateKey> find_value;  // 记录找到的常量,保证不重复
+      index_oid_t index_oid;                        // 记录找到索引的index_oid
       std::vector<AbstractExpressionRef> pred_keys;  // 记录被优化后在index_scan中的pred_key,若为空则说明不能被优化
 
       // 递归遍历filter的所有children，直到找到comparison_expression，判断是否能优化
@@ -71,9 +71,9 @@ auto Optimizer::OptimizeSeqScanAsIndexScan(const bustub::AbstractPlanNodeRef &pl
 
             // 检验lcolum是否在索引中
             for (const auto &index : indexes) {  // 遍历所有索引，判断col是否在其中
-              const auto &keyAttrs = index->index_->GetKeyAttrs();
-              auto finded = std::find(keyAttrs.begin(), keyAttrs.end(), col);
-              if (finded != keyAttrs.end()) {  // 若列对应一个index
+              const auto &key_attrs = index->index_->GetKeyAttrs();
+              auto finded = std::find(key_attrs.begin(), key_attrs.end(), col);
+              if (finded != key_attrs.end()) {  // 若列对应一个index
                 index_oid = index->index_oid_;
 
                 // 查找find_value，看是否有与当前rvalue重复的值

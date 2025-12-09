@@ -38,7 +38,7 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
 
       if (plan_->filter_predicate_ != nullptr) {  // 若filter存在，检验该tuple是否能通过filter
         Value value = plan_->filter_predicate_->Evaluate(tuple, GetOutputSchema());
-        if (value.CompareEquals(Value(TypeId::BOOLEAN, true)) == CmpBool::CmpTrue) {
+        if (value.CompareEquals(Value(TypeId::BOOLEAN, 1)) == CmpBool::CmpTrue) {
           // 若能通过fliter则返回
           return true;
         }

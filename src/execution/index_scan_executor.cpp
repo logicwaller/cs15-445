@@ -20,7 +20,7 @@ void IndexScanExecutor::Init() {
   index_info_ = exec_ctx_->GetCatalog()->GetIndex(plan_->index_oid_);
   tree_ = dynamic_cast<BPlusTreeIndexForTwoIntegerColumn *>(index_info_->index_.get());
   pred_keys_index_ = 0;
-  if (plan_->pred_keys_.size() == 0) {  // 若pred_key不存在，则说明是ordered scan,需要初始化iterator
+  if (plan_->pred_keys_.empty()) {  // 若pred_key不存在，则说明是ordered scan,需要初始化iterator
     iterator_.emplace(tree_->GetBeginIterator());
   }
 }
@@ -63,7 +63,7 @@ auto IndexScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
 
         if (plan_->filter_predicate_ != nullptr) {  // 若filter存在，则检验
           Value value = plan_->filter_predicate_->Evaluate(tuple, GetOutputSchema());
-          if (value.CompareEquals(Value(TypeId::BOOLEAN, true)) == CmpBool::CmpTrue) {
+          if (value.CompareEquals(Value(TypeId::BOOLEAN, 1)) == CmpBool::CmpTrue) {
             // 若能通过fliter则返回true
             return true;
           }

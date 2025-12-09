@@ -83,7 +83,7 @@ auto Optimizer::OptimizeNLJAsHashJoin(const AbstractPlanNodeRef &plan) -> Abstra
       preds = next_preds;
     }
 
-    if (can_be_optimized) {
+    if (can_be_optimized && !left_key_expr.empty()) {
       return std::make_shared<HashJoinPlanNode>(nlj_plan.output_schema_, nlj_plan.GetLeftPlan(),
                                                 nlj_plan.GetRightPlan(), left_key_expr, right_key_expr,
                                                 nlj_plan.GetJoinType());

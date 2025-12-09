@@ -78,8 +78,8 @@ auto NestIndexJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   }
 }
 
-auto NestIndexJoinExecutor::GetAllValueFromTuple(const Tuple &tuple, const Schema &schema, bool is_null) const
-    -> std::vector<Value> {
+auto NestIndexJoinExecutor::GetAllValueFromTuple(const Tuple &tuple, const Schema &schema,
+                                                 bool is_null) const -> std::vector<Value> {
   std::vector<Value> res;
   if (!is_null) {
     uint32_t column_size = schema.GetColumnCount();

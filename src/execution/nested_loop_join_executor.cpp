@@ -23,7 +23,7 @@ NestedLoopJoinExecutor::NestedLoopJoinExecutor(ExecutorContext *exec_ctx, const 
       plan_(plan),
       left_executor_(std::move(left_executor)),
       right_executor_(std::move(right_executor)),
-      join_schema_(plan_->InferJoinSchema(*plan_->GetLeftPlan(), *plan_->GetRightPlan())) {
+      join_schema_(bustub::NestedLoopJoinPlanNode::InferJoinSchema(*plan_->GetLeftPlan(), *plan_->GetRightPlan())) {
   if (!(plan->GetJoinType() == JoinType::LEFT || plan->GetJoinType() == JoinType::INNER)) {
     // Note for 2023 Fall: You ONLY need to implement left join and inner join.
     throw bustub::NotImplementedException(fmt::format("join type {} not supported", plan->GetJoinType()));
@@ -92,8 +92,8 @@ auto NestedLoopJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   }
 }
 
-auto NestedLoopJoinExecutor::GetAllValueFromTuple(const Tuple &tuple, const Schema &schema, bool is_null) const
-    -> std::vector<Value> {
+auto NestedLoopJoinExecutor::GetAllValueFromTuple(const Tuple &tuple, const Schema &schema,
+                                                  bool is_null) const -> std::vector<Value> {
   std::vector<Value> res;
   if (!is_null) {
     uint32_t column_size = schema.GetColumnCount();
