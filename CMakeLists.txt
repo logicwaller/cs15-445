@@ -64,7 +64,7 @@ enable_testing()
 
 # attempt to find the binary if user did not specify
 find_program(CLANG_FORMAT_BIN
-        NAMES clang-format clang-format-14
+        NAMES clang-format-14 clang-format 
         HINTS ${BUSTUB_CLANG_SEARCH_PATH})
 
 if("${CLANG_FORMAT_BIN}" STREQUAL "CLANG_FORMAT_BIN-NOTFOUND")
@@ -87,7 +87,7 @@ else()
 endif()
 
 find_program(CLANG_APPLY_REPLACEMENTS_BIN
-        NAMES clang-apply-replacements clang-apply-replacements-14
+        NAMES clang-apply-replacements-14 clang-apply-replacements 
         HINTS ${BUSTUB_CLANG_SEARCH_PATH})
 
 if("${CLANG_APPLY_REPLACEMENTS_BIN}" STREQUAL "CLANG_APPLY_REPLACEMENTS_BIN-NOTFOUND")
@@ -97,6 +97,12 @@ else()
         set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
         message(STATUS "BusTub/main found clang-apply-replacements at ${CLANG_APPLY_REPLACEMENTS_BIN}")
 endif()
+
+# 强制使用14版本
+set(CLANG_FORMAT_BIN /usr/bin/clang-format-14)
+set(CLANG_TIDY_BIN /usr/bin/clang-tidy-14)
+set(CLANG_APPLY_REPLACEMENTS_BIN /usr/bin/clang-apply-replacements-14)
+
 
 # cpplint
 find_program(CPPLINT_BIN
