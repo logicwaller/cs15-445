@@ -25,7 +25,7 @@ auto Optimizer::OptimizeSeqScanAsIndexScan(const bustub::AbstractPlanNodeRef &pl
       bool can_be_optimized = true;                 // 记录是否能被优化
       std::optional<uint32_t> col_idx;              // 记录找到的列的下标，只能有一个
       std::unordered_set<AggregateKey> find_value;  // 记录找到的常量,保证不重复
-      index_oid_t index_oid;                        // 记录找到索引的index_oid
+      index_oid_t index_oid = 0;                    // 记录找到索引的index_oid
       std::vector<AbstractExpressionRef> pred_keys;  // 记录被优化后在index_scan中的pred_key,若为空则说明不能被优化
 
       // 递归遍历filter的所有children，直到找到comparison_expression，判断是否能优化

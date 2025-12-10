@@ -42,6 +42,19 @@ class Optimizer {
   auto OptimizeMergeFilterNLJ(const AbstractPlanNodeRef &plan) -> AbstractPlanNodeRef;
 
   /**
+   * @brief 对于多重嵌套join，将filter下移，使其尽可能进行hashjoin
+   */
+  auto OptimizeMergeFilterMultiJoin(const AbstractPlanNodeRef &plan) -> AbstractPlanNodeRef;
+
+  /**
+   * @brief 对于给定的comparsions,将其使用logic_expression::AND进行组合，返回组合结果;
+   *        left(right)_column_cnt代表左(右)子expression的column大小，若为空则说明不需要重构column
+   */
+  auto CombineComparsionExpression(const std::vector<AbstractExpressionRef> &comparsions,
+                                   std::optional<size_t> left_column_cnt = std::nullopt,
+                                   std::optional<size_t> right_column_cnt = std::nullopt) -> AbstractExpressionRef;
+
+  /**
    * @brief optimize nested loop join into hash join.
    * In the starter code, we will check NLJs with exactly one equal condition. You can further support optimizing joins
    * with multiple eq conditions.

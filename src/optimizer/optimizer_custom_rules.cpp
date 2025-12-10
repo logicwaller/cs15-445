@@ -11,6 +11,7 @@ auto Optimizer::OptimizeCustom(const AbstractPlanNodeRef &plan) -> AbstractPlanN
   auto p = plan;
   p = OptimizeMergeProjection(p);
   p = OptimizeMergeFilterNLJ(p);
+  p = OptimizeMergeFilterMultiJoin(p);  //对于leaderboard-q1的优化
   p = OptimizeNLJAsHashJoin(p);
   p = OptimizeOrderByAsIndexScan(p);
   p = OptimizeSortLimitAsTopN(p);
