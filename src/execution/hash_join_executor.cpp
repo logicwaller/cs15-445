@@ -61,10 +61,8 @@ auto HashJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
 
       // 若是left_join且未匹配到，则返回right_tuple为null的tuple
       if (plan_->join_type_ == JoinType::LEFT && match_res_.empty()) {
-        std::vector<Value> lvalues(GetAllValueFromTuple(left_tuple_, *left_schema_, false));
-        std::vector<Value> rvalues(GetAllValueFromTuple(Tuple(), *right_schema_, true));
-        lvalues.insert(lvalues.end(), rvalues.begin(), rvalues.end());
-        *tuple = Tuple(lvalues, join_schema_.get());
+        auto new_values = CombineTwoTuple(left_tuple_, *left_schema_, Tuple(), *right_schema_, true);
+        *tuple = Tuple(new_values, join_schema_.get());
         return true;
       }
     } else {
@@ -72,10 +70,8 @@ auto HashJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       Tuple right_tuple = match_res_.back();
       match_res_.pop_back();
       // 返回join后的结果
-      std::vector<Value> lvalues(GetAllValueFromTuple(left_tuple_, *left_schema_, false));
-      std::vector<Value> rvalues(GetAllValueFromTuple(right_tuple, *right_schema_, false));
-      lvalues.insert(lvalues.end(), rvalues.begin(), rvalues.end());
-      *tuple = Tuple(lvalues, join_schema_.get());
+      auto new_values = CombineTwoTuple(left_tuple_, *left_schema_, right_tuple, *right_schema_, false);
+      *tuple = Tuple(new_values, join_schema_.get());
       return true;
     }
   }
@@ -95,24 +91,29 @@ auto HashJoinExecutor::MakeGroupByKey(const Tuple *tuple, bool is_left) -> Aggre
     schema = right_schema_;
   }
 
-  keys.resize(keys.size());
+  keys.reserve(plans.size());
   for (const auto &expr : plans) {
     keys.emplace_back(expr->Evaluate(tuple, *schema));
   }
   return {keys};
 }
 
-auto HashJoinExecutor::GetAllValueFromTuple(const Tuple &tuple, const Schema &schema, bool is_null) const
-    -> std::vector<Value> {
+auto HashJoinExecutor::CombineTwoTuple(const Tuple &ltuple, const Schema &lschema, const Tuple &rtuple,
+                                       const Schema &rschema, bool is_right_null) -> std::vector<Value> {
   std::vector<Value> res;
-  if (!is_null) {
-    uint32_t column_size = schema.GetColumnCount();
-    for (uint32_t i = 0; i < column_size; i++) {
-      res.push_back(tuple.GetValue(&schema, i));
-    }
-  } else {
-    for (const auto &col : schema.GetColumns()) {
-      res.push_back(ValueFactory::GetNullValueByType(col.GetType()));
+  uint32_t lcolumn_size = lschema.GetColumnCount();
+  uint32_t rcolumn_size = rschema.GetColumnCount();
+  res.reserve(lcolumn_size + rcolumn_size);
+  // 插入left_tuple
+  for (uint32_t i = 0; i < lcolumn_size; i++) {
+    res.emplace_back(ltuple.GetValue(&lschema, i));
+  }
+  // 插入right_tuple
+  for (uint32_t i = 0; i < rcolumn_size; i++) {
+    if (!is_right_null) {
+      res.emplace_back(rtuple.GetValue(&rschema, i));
+    } else {
+      res.emplace_back(ValueFactory::GetNullValueByType(rschema.GetColumn(i).GetType()));
     }
   }
   return res;

@@ -57,8 +57,9 @@ class HashJoinExecutor : public AbstractExecutor {
   /** 获取给定tuple的join_key，is_left表示是否为left_child */
   auto MakeGroupByKey(const Tuple *tuple, bool is_left) -> AggregateKey;
 
-  /** 获取一个tuple的所有value；若is_null为真则返回相应的null_value */
-  auto GetAllValueFromTuple(const Tuple &tuple, const Schema &schema, bool is_null) const -> std::vector<Value>;
+  /** 将左右tuple合并为一个tuple；若is_right_null为真则使right_tuple为null_value */
+  auto CombineTwoTuple(const Tuple &ltuple, const Schema &lschema, const Tuple &rtuple, const Schema &rschema,
+                       bool is_right_null) -> std::vector<Value>;
 
   /** The HashJoin plan node to be executed. */
   const HashJoinPlanNode *plan_;

@@ -55,10 +55,8 @@ auto NestedLoopJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     if (!rstatus) {  // 若遍历所有的right_child都无法匹配
       if (plan_->GetJoinType() == JoinType::LEFT &&
           !has_matched_) {  // 若是left_join且未匹配过，则返回right_tuple为null的tuple
-        std::vector<Value> lvalues(GetAllValueFromTuple(left_tuple_, *left_schema_, false));
-        std::vector<Value> rvalues(GetAllValueFromTuple(right_tuple, *right_schema_, true));
-        lvalues.insert(lvalues.end(), rvalues.begin(), rvalues.end());
-        *tuple = Tuple(lvalues, &join_schema_);
+        auto new_values = CombineTwoTuple(left_tuple_, *left_schema_, Tuple(), *right_schema_, true);
+        *tuple = Tuple(new_values, &join_schema_);
 
         // 重置has_matched_,设为true使得下一次循环会直接取left_exec的下一个tuple
         has_matched_ = true;
@@ -79,10 +77,8 @@ auto NestedLoopJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       // 判断是否匹配
       auto compare = plan_->predicate_->EvaluateJoin(&left_tuple_, *left_schema_, &right_tuple, *right_schema_);
       if (!compare.IsNull() && compare.GetAs<bool>()) {  // 若匹配，则返回对应tuple
-        std::vector<Value> lvalues(GetAllValueFromTuple(left_tuple_, *left_schema_, false));
-        std::vector<Value> rvalues(GetAllValueFromTuple(right_tuple, *right_schema_, false));
-        lvalues.insert(lvalues.end(), rvalues.begin(), rvalues.end());
-        *tuple = Tuple(lvalues, &join_schema_);
+        auto new_values = CombineTwoTuple(left_tuple_, *left_schema_, right_tuple, *right_schema_, false);
+        *tuple = Tuple(new_values, &join_schema_);
 
         // 记录本次left_tuple_已被匹配过
         has_matched_ = true;
@@ -92,17 +88,22 @@ auto NestedLoopJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   }
 }
 
-auto NestedLoopJoinExecutor::GetAllValueFromTuple(const Tuple &tuple, const Schema &schema, bool is_null) const
-    -> std::vector<Value> {
+auto NestedLoopJoinExecutor::CombineTwoTuple(const Tuple &ltuple, const Schema &lschema, const Tuple &rtuple,
+                                             const Schema &rschema, bool is_right_null) -> std::vector<Value> {
   std::vector<Value> res;
-  if (!is_null) {
-    uint32_t column_size = schema.GetColumnCount();
-    for (uint32_t i = 0; i < column_size; i++) {
-      res.push_back(tuple.GetValue(&schema, i));
-    }
-  } else {
-    for (const auto &col : schema.GetColumns()) {
-      res.push_back(ValueFactory::GetNullValueByType(col.GetType()));
+  uint32_t lcolumn_size = lschema.GetColumnCount();
+  uint32_t rcolumn_size = rschema.GetColumnCount();
+  res.reserve(lcolumn_size + rcolumn_size);
+  // 插入left_tuple
+  for (uint32_t i = 0; i < lcolumn_size; i++) {
+    res.emplace_back(ltuple.GetValue(&lschema, i));
+  }
+  // 插入right_tuple
+  for (uint32_t i = 0; i < rcolumn_size; i++) {
+    if (!is_right_null) {
+      res.emplace_back(rtuple.GetValue(&rschema, i));
+    } else {
+      res.emplace_back(ValueFactory::GetNullValueByType(rschema.GetColumn(i).GetType()));
     }
   }
   return res;

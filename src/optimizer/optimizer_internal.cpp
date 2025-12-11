@@ -32,9 +32,11 @@ auto Optimizer::CombineComparsionExpression(const std::vector<AbstractExpression
     res = comparsions.back();
   } else {
     // 将comparsion用and组合起来
+    BUSTUB_ENSURE(comparsions[0] && comparsions[1], "nullptr comparsion");
     res = std::make_shared<LogicExpression>(comparsions[0], comparsions[1], LogicType::And);  //记录组合结果
     size_t s = comparsions.size();
     for (size_t i = 2; i < s; i++) {
+      BUSTUB_ENSURE(comparsions[i], "nullptr comparsion");
       res->children_[1] = std::make_shared<LogicExpression>(comparsions[i], res->children_[1], LogicType::And);
     }
   }
@@ -71,6 +73,7 @@ auto Optimizer::OptimizeMergeFilterMultiJoin(const AbstractPlanNodeRef &plan) ->
 
       for (const auto &pred : preds) {
         const auto &compare = std::dynamic_pointer_cast<ComparisonExpression>(pred);
+        const auto &logic = std::dynamic_pointer_cast<LogicExpression>(pred);
         if (compare) {
           bool insert_child = true;  //记录本compare插入child还是保留在本层
           const auto &lchild = pred->GetChildAt(0);
@@ -98,8 +101,7 @@ auto Optimizer::OptimizeMergeFilterMultiJoin(const AbstractPlanNodeRef &plan) ->
           } else {
             now_comparsions.push_back(compare);
           }
-        } else {  //若不是compare则只会是logic
-          const auto &logic = std::dynamic_pointer_cast<LogicExpression>(pred);
+        } else if (logic) {                           //若是logic则遍历其child
           if (logic->logic_type_ == LogicType::Or) {  //若logic判断出现or，则不能被优化
             can_be_optimized = false;
             break;
@@ -108,6 +110,9 @@ auto Optimizer::OptimizeMergeFilterMultiJoin(const AbstractPlanNodeRef &plan) ->
           for (const auto &child : logic->GetChildren()) {
             next_preds.push_back(child);
           }
+        } else {  //既不是comparsion也不是logic，则为constantValue，不能被优化
+          can_be_optimized = false;
+          break;
         }
       }
 
@@ -124,11 +129,19 @@ auto Optimizer::OptimizeMergeFilterMultiJoin(const AbstractPlanNodeRef &plan) ->
       // 设置新的child_plan
       auto child_lchild = nlj_plan_lchild.GetLeftPlan();
       auto child_rchild = nlj_plan_lchild.GetRightPlan();
-      auto child_plan = NestedLoopJoinPlanNode(
-          nlj_plan_lchild.output_schema_, child_lchild, child_rchild,
-          CombineComparsionExpression(child_comparsions, child_lchild->OutputSchema().GetColumnCount(),
-                                      child_rchild->OutputSchema().GetColumnCount()),
-          nlj_plan_lchild.join_type_);
+      auto child_pred = CombineComparsionExpression(child_comparsions, child_lchild->OutputSchema().GetColumnCount(),
+                                                    child_rchild->OutputSchema().GetColumnCount());
+      // 将plan_child原本的predicate也添加进去
+      if (nlj_plan_lchild.predicate_) {
+        if (child_pred) {
+          child_pred =
+              CombineComparsionExpression(std::vector<AbstractExpressionRef>{child_pred, nlj_plan_lchild.predicate_});
+        } else {
+          child_pred = nlj_plan_lchild.predicate_;
+        }
+      }
+      auto child_plan = NestedLoopJoinPlanNode(nlj_plan_lchild.output_schema_, child_lchild, child_rchild, child_pred,
+                                               nlj_plan_lchild.join_type_);
 
       // 设置optimized_plan
       optimized_plan = std::make_shared<NestedLoopJoinPlanNode>(

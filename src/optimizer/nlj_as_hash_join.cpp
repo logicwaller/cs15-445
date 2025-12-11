@@ -53,8 +53,8 @@ auto Optimizer::OptimizeNLJAsHashJoin(const AbstractPlanNodeRef &plan) -> Abstra
           auto rcolumn = std::dynamic_pointer_cast<ColumnValueExpression>(rchild);
 
           if (lcolumn && rcolumn) {  //若是列和列的比较
-            // 若列和列的判断出现非=的判断，则说明不能被优化
-            if (compare->comp_type_ != ComparisonType::Equal) {
+            // 若列和列的判断出现非=的判断，或左右的tupleIdx一致，则说明不能被优化
+            if ((compare->comp_type_ != ComparisonType::Equal) || (lcolumn->GetTupleIdx() == rcolumn->GetTupleIdx())) {
               can_be_optimized = false;
               break;
             }
@@ -66,7 +66,8 @@ auto Optimizer::OptimizeNLJAsHashJoin(const AbstractPlanNodeRef &plan) -> Abstra
             }
             // 存入对应expr
             left_key_expr.push_back(lcolumn);
-            right_key_expr.push_back(rcolumn);
+            right_key_expr.push_back(
+                std::make_shared<ColumnValueExpression>(0, rcolumn->GetColIdx(), rcolumn->GetReturnType()));
           } else {  // 若比较的左右child有一个不是column，则将表达式放入filter_node中
             const auto &rvalue = std::dynamic_pointer_cast<ConstantValueExpression>(rchild);
             bool is_left_column = true;  //记录left_child是否为column

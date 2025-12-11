@@ -49,10 +49,9 @@ class NestIndexJoinExecutor : public AbstractExecutor {
   auto Next(Tuple *tuple, RID *rid) -> bool override;
 
  private:
-  /**
-   * 获取一个tuple的所有Value;若is_null为真则返回全为null的value
-   */
-  auto GetAllValueFromTuple(const Tuple &tuple, const Schema &schema, bool is_null) const -> std::vector<Value>;
+  /** 将左右tuple合并为一个tuple；若is_right_null为真则使right_tuple为null_value */
+  auto CombineTwoTuple(const Tuple &ltuple, const Schema &lschema, const Tuple &rtuple, const Schema &rschema,
+                       bool is_right_null) -> std::vector<Value>;
 
   /** The nested index join plan node. */
   const NestedIndexJoinPlanNode *plan_;

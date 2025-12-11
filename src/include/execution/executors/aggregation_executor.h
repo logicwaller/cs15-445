@@ -72,56 +72,45 @@ class SimpleAggregationHashTable {
    */
   void CombineAggregateValues(AggregateValue *result, const AggregateValue &input) {
     for (uint32_t i = 0; i < agg_exprs_.size(); i++) {
-      Value input_value;
-      Value res_value;
       switch (agg_types_[i]) {
         case AggregationType::CountStarAggregate:
           // count star无论如何都++
-          res_value = result->aggregates_[i];
-          result->aggregates_[i] = res_value.Add(Value(res_value.GetTypeId(), 1));
+          result->aggregates_[i] = result->aggregates_[i].Add(Value(result->aggregates_[i].GetTypeId(), 1));
           break;
         case AggregationType::CountAggregate:
           // count只在input的值不为空时才++
-          input_value = input.aggregates_[i];
-          if (!input_value.IsNull()) {
-            res_value = result->aggregates_[i];
-            if (res_value.IsNull()) {  // 若res_value为null，则设置为1
-              result->aggregates_[i] = Value(res_value.GetTypeId(), 1);
+          if (!input.aggregates_[i].IsNull()) {
+            if (result->aggregates_[i].IsNull()) {  // 若res_value为null，则设置为1
+              result->aggregates_[i] = Value(result->aggregates_[i].GetTypeId(), 1);
             } else {  // 否则res_value++
-              result->aggregates_[i] = res_value.Add(Value(res_value.GetTypeId(), 1));
+              result->aggregates_[i] = result->aggregates_[i].Add(Value(result->aggregates_[i].GetTypeId(), 1));
             }
           }
           break;
         case AggregationType::SumAggregate:
-          input_value = input.aggregates_[i];
-          if (!input_value.IsNull()) {
-            res_value = result->aggregates_[i];
-            if (res_value.IsNull()) {  // 若res_value为null，则设置为input_value
-              result->aggregates_[i] = input_value;
+          if (!input.aggregates_[i].IsNull()) {
+            if (result->aggregates_[i].IsNull()) {  // 若res_value为null，则设置为input_value
+              result->aggregates_[i] = input.aggregates_[i];
             } else {  // 否则res_value += input_value
-              result->aggregates_[i] = res_value.Add(input_value);
+              result->aggregates_[i] = result->aggregates_[i].Add(input.aggregates_[i]);
             }
           }
           break;
         case AggregationType::MinAggregate:
-          input_value = input.aggregates_[i];
-          if (!input_value.IsNull()) {
-            res_value = result->aggregates_[i];
-            if (res_value.IsNull()) {  // 若res_value为null，则设置为input_value
-              result->aggregates_[i] = input_value;
+          if (!input.aggregates_[i].IsNull()) {
+            if (result->aggregates_[i].IsNull()) {  // 若res_value为null，则设置为input_value
+              result->aggregates_[i] = input.aggregates_[i];
             } else {  // 否则res_value = min(res_value, input_value)
-              result->aggregates_[i] = res_value.Min(input_value);
+              result->aggregates_[i] = result->aggregates_[i].Min(input.aggregates_[i]);
             }
           }
           break;
         case AggregationType::MaxAggregate:
-          input_value = input.aggregates_[i];
-          if (!input_value.IsNull()) {
-            res_value = result->aggregates_[i];
-            if (res_value.IsNull()) {  // 若res_value为null，则设置为input_value
-              result->aggregates_[i] = input_value;
+          if (!input.aggregates_[i].IsNull()) {
+            if (result->aggregates_[i].IsNull()) {  // 若res_value为null，则设置为input_value
+              result->aggregates_[i] = input.aggregates_[i];
             } else {  // 否则res_value = max(res_value, input_value)
-              result->aggregates_[i] = res_value.Max(input_value);
+              result->aggregates_[i] = result->aggregates_[i].Max(input.aggregates_[i]);
             }
           }
           break;

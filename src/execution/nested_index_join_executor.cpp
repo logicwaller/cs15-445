@@ -57,10 +57,8 @@ auto NestIndexJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
 
       if (plan_->GetJoinType() == JoinType::LEFT &&
           match_res_.empty()) {  // 若是left_join且未匹配过，则返回right_tuple为null的tuple
-        std::vector<Value> lvalues(GetAllValueFromTuple(left_tuple_, *left_schema_, false));
-        std::vector<Value> rvalues(GetAllValueFromTuple(Tuple(), plan_->InnerTableSchema(), true));
-        lvalues.insert(lvalues.end(), rvalues.begin(), rvalues.end());
-        *tuple = Tuple(lvalues, join_schema_.get());
+        auto new_values = CombineTwoTuple(left_tuple_, *left_schema_, Tuple(), plan_->InnerTableSchema(), true);
+        *tuple = Tuple(new_values, join_schema_.get());
         return true;
       }
     } else {
@@ -69,26 +67,29 @@ auto NestIndexJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       match_res_.pop_back();
       auto right_tuple = table_info_->table_->GetTuple(rid).second;
       // 返回join后的结果
-      std::vector<Value> lvalues(GetAllValueFromTuple(left_tuple_, *left_schema_, false));
-      std::vector<Value> rvalues(GetAllValueFromTuple(right_tuple, plan_->InnerTableSchema(), false));
-      lvalues.insert(lvalues.end(), rvalues.begin(), rvalues.end());
-      *tuple = Tuple(lvalues, join_schema_.get());
+      auto new_values = CombineTwoTuple(left_tuple_, *left_schema_, right_tuple, plan_->InnerTableSchema(), false);
+      *tuple = Tuple(new_values, join_schema_.get());
       return true;
     }
   }
 }
 
-auto NestIndexJoinExecutor::GetAllValueFromTuple(const Tuple &tuple, const Schema &schema, bool is_null) const
-    -> std::vector<Value> {
+auto NestIndexJoinExecutor::CombineTwoTuple(const Tuple &ltuple, const Schema &lschema, const Tuple &rtuple,
+                                            const Schema &rschema, bool is_right_null) -> std::vector<Value> {
   std::vector<Value> res;
-  if (!is_null) {
-    uint32_t column_size = schema.GetColumnCount();
-    for (uint32_t i = 0; i < column_size; i++) {
-      res.push_back(tuple.GetValue(&schema, i));
-    }
-  } else {
-    for (const auto &col : schema.GetColumns()) {
-      res.push_back(ValueFactory::GetNullValueByType(col.GetType()));
+  uint32_t lcolumn_size = lschema.GetColumnCount();
+  uint32_t rcolumn_size = rschema.GetColumnCount();
+  res.reserve(lcolumn_size + rcolumn_size);
+  // 插入left_tuple
+  for (uint32_t i = 0; i < lcolumn_size; i++) {
+    res.emplace_back(ltuple.GetValue(&lschema, i));
+  }
+  // 插入right_tuple
+  for (uint32_t i = 0; i < rcolumn_size; i++) {
+    if (!is_right_null) {
+      res.emplace_back(rtuple.GetValue(&rschema, i));
+    } else {
+      res.emplace_back(ValueFactory::GetNullValueByType(rschema.GetColumn(i).GetType()));
     }
   }
   return res;
