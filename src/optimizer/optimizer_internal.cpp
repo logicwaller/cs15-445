@@ -11,6 +11,7 @@
 #include "execution/plans/abstract_plan.h"
 #include "execution/plans/filter_plan.h"
 #include "execution/plans/hash_join_plan.h"
+#include "execution/plans/limit_plan.h"
 #include "execution/plans/nested_loop_join_plan.h"
 #include "execution/plans/projection_plan.h"
 #include "optimizer/optimizer.h"
@@ -155,6 +156,34 @@ auto Optimizer::OptimizeMergeFilterMultiJoin(const AbstractPlanNodeRef &plan) ->
     children.emplace_back(OptimizeMergeFilterMultiJoin(child));
   }
   optimized_plan = optimized_plan->CloneWithChildren(std::move(children));
+  return optimized_plan;
+}
+
+auto Optimizer::OptimizeEliminateFalseFilter(const AbstractPlanNodeRef &plan) -> AbstractPlanNodeRef {
+  // 若filter一定为false，则设置子child为limit 0
+  // 目前只支持判断常数x=y一定为false
+  std::vector<AbstractPlanNodeRef> children;
+  for (const auto &child : plan->GetChildren()) {
+    children.emplace_back(OptimizeEliminateFalseFilter(child));
+  }
+
+  auto optimized_plan = plan->CloneWithChildren(std::move(children));
+
+  if (optimized_plan->GetType() == PlanType::Filter) {
+    const auto &filter_plan = dynamic_cast<const FilterPlanNode &>(*optimized_plan);
+    const auto &compare = std::dynamic_pointer_cast<ComparisonExpression>(filter_plan.GetPredicate());
+    if (compare) {
+      const auto &lvalue = std::dynamic_pointer_cast<ConstantValueExpression>(compare->GetChildAt(0));
+      const auto &rvalue = std::dynamic_pointer_cast<ConstantValueExpression>(compare->GetChildAt(1));
+      if (lvalue && rvalue) {
+        if (compare->comp_type_ == ComparisonType::Equal) {
+          if (lvalue->val_.CompareEquals(rvalue->val_) == CmpBool::CmpFalse) {
+            return std::make_shared<LimitPlanNode>(filter_plan.output_schema_, filter_plan.GetChildPlan(), 0);
+          }
+        }
+      }
+    }
+  }
 
   return optimized_plan;
 }

@@ -17,6 +17,8 @@ auto Optimizer::OptimizeCustom(const AbstractPlanNodeRef &plan) -> AbstractPlanN
   p = OptimizeSortLimitAsTopN(p);
   p = OptimizeMergeFilterScan(p);
   p = OptimizeSeqScanAsIndexScan(p);
+  p = OptimizeColumnPruning(p);  //减少column
+  p = OptimizeEliminateFalseFilter(p);
   return p;
 }
 
