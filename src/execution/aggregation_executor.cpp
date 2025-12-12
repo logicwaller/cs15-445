@@ -51,7 +51,9 @@ auto AggregationExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   if (aht_iterator_ == aht_.End()) {
     return false;
   }
-  std::vector<Value> res{aht_iterator_.Key().group_bys_};
+  std::vector<Value> res;
+  res.reserve(aht_iterator_.Key().group_bys_.size() + aht_iterator_.Val().aggregates_.size());
+  res.insert(res.end(), aht_iterator_.Key().group_bys_.begin(), aht_iterator_.Key().group_bys_.end());
   res.insert(res.end(), aht_iterator_.Val().aggregates_.begin(), aht_iterator_.Val().aggregates_.end());
   ++aht_iterator_;
   *tuple = Tuple(res, &plan_->OutputSchema());

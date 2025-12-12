@@ -68,8 +68,5 @@ class NestIndexJoinExecutor : public AbstractExecutor {
 
   // 记录在右child匹配到的tuple的rid
   std::vector<RID> match_res_;
-
-  // 记录最终join后的schema
-  SchemaRef join_schema_;
 };
 }  // namespace bustub

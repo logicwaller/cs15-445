@@ -33,64 +33,67 @@ void HashJoinExecutor::Init() {
   right_child_->Init();
   left_schema_ = plan_->GetLeftPlan()->output_schema_;
   right_schema_ = plan_->GetRightPlan()->output_schema_;
-
-  // 初始化join_schema_
-  std::vector<Column> tem_colum{left_schema_->GetColumns()};
-  tem_colum.insert(tem_colum.end(), right_schema_->GetColumns().begin(), right_schema_->GetColumns().end());
-  Schema tem_schema(tem_colum);
-  join_schema_ = std::make_shared<Schema>(tem_schema);
+  match_res_index_ = 0;
+  match_res_ = nullptr;
 
   // 对于right_child构建hash表
   Tuple right_tuple;
   RID tem_rid;
   while (right_child_->Next(&right_tuple, &tem_rid)) {
-    hash_map_[MakeGroupByKey(&right_tuple, false)].push_back(right_tuple);
+    hash_map_[MakeGroupByKey(&right_tuple, plan_->RightJoinKeyExpressions(), right_schema_)].push_back(right_tuple);
+  }
+
+  // 建立bloom过滤器
+  bloom_ = std::make_unique<BloomFilter>(BloomFilter(hash_map_.size(), 2));
+  for (const auto &k : hash_map_) {
+    bloom_->Insert(k.first);
   }
 }
 
 auto HashJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   while (true) {
-    if (match_res_.empty()) {  // 若match_res_为空，则匹配下一个left_tuple
+    if (match_res_ == nullptr || match_res_index_ >= match_res_->size()) {  // 若match_res_为空，则匹配下一个left_tuple
       auto status = left_child_->Next(&left_tuple_, rid);
       if (!status) {  // 若left_child已取尽，则返回false
         return false;
       }
 
-      // 获取匹配结果
-      match_res_ = hash_map_[MakeGroupByKey(&left_tuple_, true)];
-
-      // 若是left_join且未匹配到，则返回right_tuple为null的tuple
-      if (plan_->join_type_ == JoinType::LEFT && match_res_.empty()) {
-        auto new_values = CombineTwoTuple(left_tuple_, *left_schema_, Tuple(), *right_schema_, true);
-        *tuple = Tuple(new_values, join_schema_.get());
+      const auto &left_aggkey = MakeGroupByKey(&left_tuple_, plan_->LeftJoinKeyExpressions(), left_schema_);
+      bool not_contain = false;  // 检查是否在bloom过滤器就能过滤当前left_tuple
+      if (!bloom_->PossiblyContains(left_aggkey)) {
+        not_contain = true;
+        match_res_ = nullptr;
+      } else {
+        // 获取匹配结果
+        auto it = hash_map_.find(left_aggkey);
+        if (it == hash_map_.end()) {
+          not_contain = true;
+          match_res_ = nullptr;
+        } else {
+          match_res_ = &it->second;
+          match_res_index_ = 0;
+        }
+      }
+      // 若无法通过bloom 或 left_join且未匹配，则返回right_tuple为null的tuple
+      if (plan_->join_type_ == JoinType::LEFT && (not_contain || match_res_->empty())) {
+        const auto &new_values = CombineTwoTuple(left_tuple_, *left_schema_, Tuple(), *right_schema_, true);
+        *tuple = Tuple(new_values, &plan_->OutputSchema());
         return true;
       }
     } else {
       // 获取right_tuple
-      Tuple right_tuple = match_res_.back();
-      match_res_.pop_back();
+      const Tuple &right_tuple = match_res_->at(match_res_index_++);
       // 返回join后的结果
-      auto new_values = CombineTwoTuple(left_tuple_, *left_schema_, right_tuple, *right_schema_, false);
-      *tuple = Tuple(new_values, join_schema_.get());
+      const auto &new_values = CombineTwoTuple(left_tuple_, *left_schema_, right_tuple, *right_schema_, false);
+      *tuple = Tuple(new_values, &plan_->OutputSchema());
       return true;
     }
   }
 }
 
-auto HashJoinExecutor::MakeGroupByKey(const Tuple *tuple, bool is_left) -> AggregateKey {
+auto HashJoinExecutor::MakeGroupByKey(const Tuple *tuple, const std::vector<AbstractExpressionRef> &plans,
+                                      const SchemaRef &schema) -> AggregateKey {
   std::vector<Value> keys;
-
-  // 获取对应plan和schema
-  std::vector<AbstractExpressionRef> plans;
-  SchemaRef schema;
-  if (is_left) {
-    plans = plan_->LeftJoinKeyExpressions();
-    schema = left_schema_;
-  } else {
-    plans = plan_->RightJoinKeyExpressions();
-    schema = right_schema_;
-  }
-
   keys.reserve(plans.size());
   for (const auto &expr : plans) {
     keys.emplace_back(expr->Evaluate(tuple, *schema));

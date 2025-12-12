@@ -31,12 +31,6 @@ void NestIndexJoinExecutor::Init() {
   child_executor_->Init();
   // 初始化left_schema_
   left_schema_ = plan_->GetChildPlan()->output_schema_;
-  // 初始化join_schema_
-  std::vector<Column> tem_colum{left_schema_->GetColumns()};
-  tem_colum.insert(tem_colum.end(), plan_->inner_table_schema_->GetColumns().begin(),
-                   plan_->inner_table_schema_->GetColumns().end());
-  Schema tem_schema(tem_colum);
-  join_schema_ = std::make_shared<Schema>(tem_schema);
 }
 
 auto NestIndexJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
@@ -58,7 +52,7 @@ auto NestIndexJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       if (plan_->GetJoinType() == JoinType::LEFT &&
           match_res_.empty()) {  // 若是left_join且未匹配过，则返回right_tuple为null的tuple
         auto new_values = CombineTwoTuple(left_tuple_, *left_schema_, Tuple(), plan_->InnerTableSchema(), true);
-        *tuple = Tuple(new_values, join_schema_.get());
+        *tuple = Tuple(new_values, &plan_->OutputSchema());
         return true;
       }
     } else {
@@ -68,7 +62,7 @@ auto NestIndexJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       auto right_tuple = table_info_->table_->GetTuple(rid).second;
       // 返回join后的结果
       auto new_values = CombineTwoTuple(left_tuple_, *left_schema_, right_tuple, plan_->InnerTableSchema(), false);
-      *tuple = Tuple(new_values, join_schema_.get());
+      *tuple = Tuple(new_values, &plan_->OutputSchema());
       return true;
     }
   }

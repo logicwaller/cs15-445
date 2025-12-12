@@ -22,8 +22,7 @@ NestedLoopJoinExecutor::NestedLoopJoinExecutor(ExecutorContext *exec_ctx, const 
     : AbstractExecutor(exec_ctx),
       plan_(plan),
       left_executor_(std::move(left_executor)),
-      right_executor_(std::move(right_executor)),
-      join_schema_(bustub::NestedLoopJoinPlanNode::InferJoinSchema(*plan_->GetLeftPlan(), *plan_->GetRightPlan())) {
+      right_executor_(std::move(right_executor)) {
   if (!(plan->GetJoinType() == JoinType::LEFT || plan->GetJoinType() == JoinType::INNER)) {
     // Note for 2023 Fall: You ONLY need to implement left join and inner join.
     throw bustub::NotImplementedException(fmt::format("join type {} not supported", plan->GetJoinType()));
@@ -56,7 +55,7 @@ auto NestedLoopJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       if (plan_->GetJoinType() == JoinType::LEFT &&
           !has_matched_) {  // 若是left_join且未匹配过，则返回right_tuple为null的tuple
         auto new_values = CombineTwoTuple(left_tuple_, *left_schema_, Tuple(), *right_schema_, true);
-        *tuple = Tuple(new_values, &join_schema_);
+        *tuple = Tuple(new_values, &plan_->OutputSchema());
 
         // 重置has_matched_,设为true使得下一次循环会直接取left_exec的下一个tuple
         has_matched_ = true;
@@ -78,7 +77,7 @@ auto NestedLoopJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       auto compare = plan_->predicate_->EvaluateJoin(&left_tuple_, *left_schema_, &right_tuple, *right_schema_);
       if (!compare.IsNull() && compare.GetAs<bool>()) {  // 若匹配，则返回对应tuple
         auto new_values = CombineTwoTuple(left_tuple_, *left_schema_, right_tuple, *right_schema_, false);
-        *tuple = Tuple(new_values, &join_schema_);
+        *tuple = Tuple(new_values, &plan_->OutputSchema());
 
         // 记录本次left_tuple_已被匹配过
         has_matched_ = true;

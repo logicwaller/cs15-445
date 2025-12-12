@@ -67,8 +67,6 @@ class NestedLoopJoinExecutor : public AbstractExecutor {
   SchemaRef left_schema_;
   SchemaRef right_schema_;
 
-  Schema join_schema_;
-
   // 记录当前遍历到的左tuple
   Tuple left_tuple_;
   bool left_status_;

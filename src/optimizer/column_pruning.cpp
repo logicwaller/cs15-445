@@ -49,53 +49,64 @@ auto Optimizer::OptimizeColumnPruning(const bustub::AbstractPlanNodeRef &plan) -
       }
 
       //必须保证col_idx是按序从0到s-1排列的
+      bool can_be_optimized = true;
       auto s = col_idxs.size();
       for (uint32_t i = 0; i < s; i++) {
-        BUSTUB_ENSURE(col_idxs[i] == i, "unimplement: skip some number in projection' col_idx");
+        if (col_idxs[i] != i) {  //若出现跳过的情况，则无法被优化
+          can_be_optimized = false;
+          break;
+        }
       }
 
-      /* 对child为投影或聚合分别处理 */
-      AbstractPlanNodeRef res_child_plan;
-      if (proj_plan.GetChildPlan()->GetType() == PlanType::Projection) {
-        const auto &child_plan = dynamic_cast<const ProjectionPlanNode &>(*proj_plan.GetChildPlan());
-        std::vector<AbstractExpressionRef> new_exprs;
-        std::vector<Column> new_columns;
-        new_exprs.reserve(col_idxs.size());
-        new_columns.reserve(col_idxs.size());
-        for (auto idx : col_idxs) {
-          new_exprs.emplace_back(child_plan.expressions_[idx]);
-          new_columns.emplace_back(child_plan.expressions_[idx]->GetReturnType());
-        }
-        res_child_plan = std::make_shared<ProjectionPlanNode>(std::make_shared<Schema>(new_columns), new_exprs,
-                                                              child_plan.GetChildPlan());
-      } else {  //对聚合处理
-        const auto &child_plan = dynamic_cast<const AggregationPlanNode &>(*proj_plan.GetChildPlan());
-        std::vector<AbstractExpressionRef> new_aggergates;
-        std::vector<AggregationType> new_agg_types;
-        std::vector<Column> new_columns;
-        auto group_size = child_plan.group_bys_.size();
-        new_aggergates.reserve(col_idxs.size() - group_size);
-        new_agg_types.reserve(col_idxs.size() - group_size);
-        new_columns.reserve(col_idxs.size());
-        // 聚合的前若干位位是gruop by的列,需要额外处理
-        for (const auto &group : child_plan.group_bys_) {
-          new_columns.emplace_back(group->GetReturnType());
-        }
-        for (auto idx : col_idxs) {
-          if (idx >= group_size) {
-            new_aggergates.emplace_back(child_plan.aggregates_[idx - group_size]);
-            new_agg_types.emplace_back(child_plan.agg_types_[idx - group_size]);
-            new_columns.emplace_back(child_plan.aggregates_[idx - group_size]->GetReturnType());
+      // 若col_idxs的大小已经不小于childplan的output_schema_的大小（实际上最多只会相等），则优化无意义
+      if (col_idxs.size() >= proj_plan.GetChildPlan()->output_schema_->GetColumnCount()) {
+        can_be_optimized = false;
+      }
+
+      if (can_be_optimized) {
+        /* 对child为投影或聚合分别处理 */
+        AbstractPlanNodeRef res_child_plan;
+        if (proj_plan.GetChildPlan()->GetType() == PlanType::Projection) {
+          const auto &child_plan = dynamic_cast<const ProjectionPlanNode &>(*proj_plan.GetChildPlan());
+          std::vector<AbstractExpressionRef> new_exprs;
+          std::vector<Column> new_columns;
+          new_exprs.reserve(col_idxs.size());
+          new_columns.reserve(col_idxs.size());
+          for (auto idx : col_idxs) {
+            new_exprs.emplace_back(child_plan.expressions_[idx]);
+            new_columns.emplace_back(child_plan.expressions_[idx]->GetReturnType());
           }
+          res_child_plan = std::make_shared<ProjectionPlanNode>(std::make_shared<Schema>(new_columns), new_exprs,
+                                                                child_plan.GetChildPlan());
+        } else {  //对聚合处理
+          const auto &child_plan = dynamic_cast<const AggregationPlanNode &>(*proj_plan.GetChildPlan());
+          std::vector<AbstractExpressionRef> new_aggergates;
+          std::vector<AggregationType> new_agg_types;
+          std::vector<Column> new_columns;
+          auto group_size = child_plan.group_bys_.size();
+          new_aggergates.reserve(col_idxs.size() - group_size);
+          new_agg_types.reserve(col_idxs.size() - group_size);
+          new_columns.reserve(col_idxs.size());
+          // 聚合的前若干位位是gruop by的列,需要额外处理
+          for (const auto &group : child_plan.group_bys_) {
+            new_columns.emplace_back(group->GetReturnType());
+          }
+          for (auto idx : col_idxs) {
+            if (idx >= group_size) {
+              new_aggergates.emplace_back(child_plan.aggregates_[idx - group_size]);
+              new_agg_types.emplace_back(child_plan.agg_types_[idx - group_size]);
+              new_columns.emplace_back(child_plan.aggregates_[idx - group_size]->GetReturnType());
+            }
+          }
+          res_child_plan =
+              std::make_shared<AggregationPlanNode>(std::make_shared<Schema>(new_columns), child_plan.GetChildPlan(),
+                                                    child_plan.group_bys_, new_aggergates, new_agg_types);
         }
-        res_child_plan =
-            std::make_shared<AggregationPlanNode>(std::make_shared<Schema>(new_columns), child_plan.GetChildPlan(),
-                                                  child_plan.group_bys_, new_aggergates, new_agg_types);
-      }
 
-      // 设置optimized_plan
-      optimized_plan =
-          std::make_shared<ProjectionPlanNode>(proj_plan.output_schema_, proj_plan.expressions_, res_child_plan);
+        // 设置optimized_plan
+        optimized_plan =
+            std::make_shared<ProjectionPlanNode>(proj_plan.output_schema_, proj_plan.expressions_, res_child_plan);
+      }
     }
   }
 
