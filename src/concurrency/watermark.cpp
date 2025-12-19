@@ -40,10 +40,9 @@ auto Watermark::RemoveTxn(timestamp_t read_ts) -> void {
           // 若exist_reads_.top()在current_reads_里存在，则更新watermark_
           watermark_ = tem;
           break;
-        } else {
-          // 否则pop，继续判断下一个top是否存在
-          exist_reads_.pop();
         }
+        // 否则pop，继续判断下一个top是否存在
+        exist_reads_.pop();
       }
     }
   }
