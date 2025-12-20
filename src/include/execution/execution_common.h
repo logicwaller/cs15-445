@@ -20,6 +20,7 @@
 #include "catalog/schema.h"
 #include "concurrency/transaction.h"
 #include "storage/table/tuple.h"
+#include "type/value_factory.h"
 
 namespace bustub {
 

@@ -70,7 +70,51 @@ auto GenerateSortKey(const Tuple &tuple, const std::vector<OrderBy> &order_bys, 
  */
 auto ReconstructTuple(const Schema *schema, const Tuple &base_tuple, const TupleMeta &base_meta,
                       const std::vector<UndoLog> &undo_logs) -> std::optional<Tuple> {
-  UNIMPLEMENTED("not implemented");
+  auto schema_size = schema->GetColumnCount();   // 记录tuple中的value个数
+  std::vector<Value> moded_values(schema_size);  // 记录更改后的values
+  // moded_values初始化为base_tuple的value
+  for (uint32_t i = 0; i < schema_size; i++) {
+    moded_values[i] = base_tuple.GetValue(schema, i);
+  }
+
+  // 判断是否返回null
+  if (undo_logs.empty()) {  //若无undo_log且所有value都为null，则返回null
+    bool is_null = true;
+    for (const auto &value : moded_values) {
+      if (!value.IsNull()) {
+        is_null = false;
+        break;
+      }
+    }
+    if (is_null) {
+      return std::nullopt;
+    }
+  } else if (undo_logs.back().is_deleted_) {  //若undo_log最后一项为delete则返回null
+    return std::nullopt;
+  }
+
+  // 遍历undo_logs，进行相应修改
+  for (const auto &undo_log : undo_logs) {
+    // 获取被更改的schema
+    std::vector<Column> mod_columns;
+    for (uint32_t i = 0; i < schema_size; i++) {
+      if (undo_log.modified_fields_[i]) {
+        mod_columns.emplace_back(schema->GetColumn(i));
+      }
+    }
+    Schema mod_schema(mod_columns);
+
+    // 解析log中的tuple_并将更改应用于res_tuple
+    uint32_t mod_index = 0;  //记录更改到第几个mod_schema
+    for (uint32_t i = 0; i < schema_size; i++) {
+      if (undo_log.modified_fields_[i]) {  //在被修改的部分插入被修改后的value
+        moded_values[i] = undo_log.tuple_.GetValue(&mod_schema, mod_index++);
+      }
+    }
+  }
+
+  // 返回修改后的values构成的tuple
+  return Tuple(moded_values, schema);
 }
 
 /**
@@ -87,7 +131,35 @@ auto ReconstructTuple(const Schema *schema, const Tuple &base_tuple, const Tuple
  */
 auto CollectUndoLogs(RID rid, const TupleMeta &base_meta, const Tuple &base_tuple, std::optional<UndoLink> undo_link,
                      Transaction *txn, TransactionManager *txn_mgr) -> std::optional<std::vector<UndoLog>> {
-  UNIMPLEMENTED("not implemented");
+  //若为提交的txn就是本txn 或 tuple已被提交且最新版本小于read_ts，则返回空log
+  if (base_meta.ts_ <= txn->GetReadTs() || base_meta.ts_ == txn->GetTransactionTempTs()) {
+    return std::vector<UndoLog>();
+  }
+
+  // 若undo_link不存在，则视为不存在该tuple
+  if (!undo_link.has_value()) {
+    return std::nullopt;
+  }
+
+  // 遍历undo_link，获取对应时间的undolog
+  std::vector<UndoLog> res_logs;          //记录最终返回的longs
+  UndoLink tem_link = undo_link.value();  // 记录当前遍历到的link
+  while (true) {
+    // 获取对应log
+    auto tem_log = txn_mgr->GetUndoLogOptional(tem_link);
+    // 若遍历log结束后仍未找到小于read_ts的log，则视为tuple在read_ts不存在
+    if (!tem_log.has_value()) {
+      return std::nullopt;
+    }
+    res_logs.emplace_back(tem_log.value());
+    // 若tem_log的ts小于read_ts，则说明已获取正确的版本，进行break;
+    if (tem_log->ts_ <= txn->GetReadTs()) {
+      break;
+    }
+    tem_link = tem_log->prev_version_;
+  }
+
+  return res_logs;
 }
 
 /**
