@@ -78,16 +78,11 @@ auto ReconstructTuple(const Schema *schema, const Tuple &base_tuple, const Tuple
   }
 
   // 判断是否返回null
-  if (undo_logs.empty()) {  //若无undo_log且所有value都为null，则返回null
-    bool is_null = true;
-    for (const auto &value : moded_values) {
-      if (!value.IsNull()) {
-        is_null = false;
-        break;
-      }
-    }
-    if (is_null) {
+  if (undo_logs.empty()) {        //若无undo_log
+    if (base_meta.is_deleted_) {  //若无undo_log且已被删除，则返回null
       return std::nullopt;
+    } else {  //若无undo_log且未被删除，则返回原base_tuple
+      return base_tuple;
     }
   } else if (undo_logs.back().is_deleted_) {  //若undo_log最后一项为delete则返回null
     return std::nullopt;
@@ -114,7 +109,9 @@ auto ReconstructTuple(const Schema *schema, const Tuple &base_tuple, const Tuple
   }
 
   // 返回修改后的values构成的tuple
-  return Tuple(moded_values, schema);
+  Tuple res_tuple(moded_values, schema);
+  res_tuple.SetRid(base_tuple.GetRid());
+  return res_tuple;
 }
 
 /**
