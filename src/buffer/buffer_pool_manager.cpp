@@ -126,9 +126,10 @@ auto BufferPoolManager::Size() const -> size_t { return num_frames_; }
 auto BufferPoolManager::NewPage() -> page_id_t {
   std::unique_lock<std::mutex> lock(*bpm_latch_);
   // 本次实现在DeletePage时不会减少next_page_id,故next_page_id即是总页数，也可以作为新page的id
+  auto res_page_id = next_page_id_.load();
   next_page_id_.fetch_add(1);  // 将next_page_id++
   disk_scheduler_->IncreaseDiskSpace(next_page_id_);
-  return next_page_id_;
+  return res_page_id;
 }
 
 /**
