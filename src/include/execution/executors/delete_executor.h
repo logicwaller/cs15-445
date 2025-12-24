@@ -16,6 +16,8 @@
 #include <utility>
 #include <vector>
 
+#include "concurrency/transaction_manager.h"
+#include "execution/execution_common.h"
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
 #include "execution/plans/delete_plan.h"
@@ -62,10 +64,13 @@ class DeleteExecutor : public AbstractExecutor {
   /** The child executor from which RIDs for deleted tuples are pulled */
   std::unique_ptr<AbstractExecutor> child_executor_;
 
-  /** 记录是否已更新过 */
+  /** 记录是否执行过删除 */
   bool have_deleted_;
 
   const TableInfo *table_info_;
   std::vector<std::shared_ptr<IndexInfo>> indexes_;
+
+  /** proj4-临时存储所有待删除的tuple */
+  std::vector<Tuple> delete_tuples_;
 };
 }  // namespace bustub

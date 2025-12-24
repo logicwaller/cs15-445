@@ -55,6 +55,7 @@ auto TransactionManager::Commit(Transaction *txn) -> bool {
   std::unique_lock<std::mutex> commit_lck(commit_mutex_);
 
   // TODO(fall2023): acquire commit ts!
+  auto commit_ts = last_commit_ts_.load() + 1;  //获取commit的ts，待更新所有tuple后再执行last_commit_ts++
 
   if (txn->state_ != TransactionState::RUNNING) {
     throw Exception("txn not in running state");
@@ -69,6 +70,19 @@ auto TransactionManager::Commit(Transaction *txn) -> bool {
   }
 
   // TODO(fall2023): Implement the commit logic!
+  // 更新所有txn更改过的tuple的ts
+  for (const auto &[table_id, rids] : txn->GetWriteSets()) {
+    auto &table_heap = catalog_->GetTable(table_id)->table_;
+    for (const auto &rid : rids) {
+      // 更新tuple_meta
+      bool is_deleted = table_heap->GetTupleMeta(rid).is_deleted_;
+      if (is_deleted && !GetUndoLink(rid).has_value()) {  //若该tuple是被同一txn插入后又删除，则将ts设为0
+        table_heap->UpdateTupleMeta(TupleMeta{0, is_deleted}, rid);
+      } else {  // 否则正常插入
+        table_heap->UpdateTupleMeta(TupleMeta{commit_ts, is_deleted}, rid);
+      }
+    }
+  }
 
   std::unique_lock<std::shared_mutex> lck(txn_map_mutex_);
 
@@ -95,6 +109,59 @@ void TransactionManager::Abort(Transaction *txn) {
   running_txns_.RemoveTxn(txn->read_ts_);
 }
 
-void TransactionManager::GarbageCollection() { UNIMPLEMENTED("not implemented"); }
+void TransactionManager::GarbageCollection() {
+  std::shared_lock<std::shared_mutex> map_lck(txn_map_mutex_);
+  std::vector<txn_id_t> delete_txns;  //记录将被删除的txn_id
+  for (const auto &[txn_id, txn] : txn_map_) {
+    if (txn->state_ == TransactionState::RUNNING || txn->state_ == TransactionState::TAINTED) {  //运行中的txn不会被删除
+      continue;
+    }
+
+    bool can_be_delete = true;  //记录txn能否被清除
+
+    // 从txn所更改的tuple的视角，判断该txn储存的log中是否存在某个log是其对应tuple中相较于watermark的最新版本的log
+    const auto &write_set = txn->GetWriteSets();
+    for (const auto &[table_oid, rids] : write_set) {
+      const auto &table_info = catalog_->GetTable(table_oid);
+      for (const auto &rid : rids) {
+        const auto &tuple_ts = table_info->table_->GetTupleMeta(rid).ts_;
+        //只有watermark小于table_heap里存储的tuple_ts时，最新的log才有可能对watermark对应的时间可见
+        if (running_txns_.GetWatermark() < tuple_ts) {
+          const auto &undo_link = GetUndoLink(rid);
+          // 若txn存储了最新版本的log，则不能被删
+          if (undo_link.has_value() && undo_link->prev_txn_ == txn_id) {
+            can_be_delete = false;
+            break;
+          }
+        }
+      }
+      if (!can_be_delete) {
+        break;
+      }
+    }
+    if (!can_be_delete) {
+      continue;
+    }
+
+    // 从txn所存储的log视角，判断txn储存的log是否都ts小于watermark
+    const auto &log_size = txn->GetUndoLogNum();
+    for (size_t i = 0; i < log_size; i++) {
+      const auto &log = txn->GetUndoLog(i);
+      // 该log的ts大于watermark，则该txn不能被删
+      if (log.ts_ >= running_txns_.GetWatermark()) {
+        can_be_delete = false;
+        break;
+      }
+    }
+    // 若可以删除则添加该txn_id
+    if (can_be_delete) {
+      delete_txns.emplace_back(txn_id);
+    }
+  }
+
+  for (const auto &delete_txn : delete_txns) {
+    txn_map_.erase(delete_txn);
+  }
+}
 
 }  // namespace bustub

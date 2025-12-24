@@ -16,6 +16,8 @@
 #include <utility>
 #include <vector>
 
+#include "concurrency/transaction_manager.h"
+#include "execution/execution_common.h"
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
 #include "execution/plans/update_plan.h"
@@ -66,11 +68,12 @@ class UpdateExecutor : public AbstractExecutor {
 
   /** The child executor to obtain value from */
   std::unique_ptr<AbstractExecutor> child_executor_;
-
-  /** 记录是否已更新过 */
   bool have_updated_;
 
   std::vector<std::shared_ptr<IndexInfo>> indexes_;
   const Schema child_schema_;  // child_schema即为table本身的schema
+
+  /** proj4-临时存储待更新的tuple */
+  std::vector<Tuple> update_tuples_;
 };
 }  // namespace bustub

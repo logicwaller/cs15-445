@@ -53,10 +53,12 @@ auto InsertExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     // 修改tableHeap，插入child_tuple;meta传入一个新建的空tupleMeta即可
     auto insert_rid = table_info_->table_->InsertTuple(TupleMeta(), child_tuple, exec_ctx_->GetLockManager(),
                                                        exec_ctx_->GetTransaction());
-    if (!insert_rid.has_value()) {
-      BUSTUB_ENSURE(insert_rid.has_value(), "Failed to insert tuple, tuple is too large");
-      return false;
-    }
+
+    /** proj4-修改tableHeap内插入的tuple的tupleMeta；修改txn内的writeset */
+    // TODO:怎么添加check函数
+    table_info_->table_->UpdateTupleMeta(TupleMeta{exec_ctx_->GetTransaction()->GetTransactionTempTs(), false},
+                                         insert_rid.value());
+    exec_ctx_->GetTransaction()->AppendWriteSet(plan_->GetTableOid(), insert_rid.value());
 
     // 对每个index都插入相关数据
     for (const auto &index : indexes_) {

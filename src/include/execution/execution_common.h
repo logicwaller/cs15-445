@@ -84,4 +84,15 @@ void TxnMgrDbg(const std::string &info, TransactionManager *txn_mgr, const Table
 // your implementation. Please add your own ones as necessary so that you do not need to write
 // the same code everywhere.
 
+auto GetAllValueFromTuple(const Tuple &tuple, const Schema *schema) -> std::vector<Value>;
+
+auto GenerateDiffBetweenTuples(const Schema *schema, const Tuple *base_tuple, const Tuple *target_tuple)
+    -> std::pair<std::vector<bool>, Tuple>;
+
+auto GetUndoLogSchema(const UndoLog &log, const Schema *base_schema) -> Schema;
+
+auto IsWriteWriteConflict(const RID &rid, const TableInfo *table_info, const Transaction *txn, bool is_delete) -> bool;
+
+auto GenerateNullTupleForSchema(const Schema *schema) -> Tuple;
+
 }  // namespace bustub
