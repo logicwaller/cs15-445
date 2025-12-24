@@ -50,20 +50,32 @@ auto InsertExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
       return false;
     }
 
-    // 修改tableHeap，插入child_tuple;meta传入一个新建的空tupleMeta即可
-    auto insert_rid = table_info_->table_->InsertTuple(TupleMeta(), child_tuple, exec_ctx_->GetLockManager(),
-                                                       exec_ctx_->GetTransaction());
+    /** proj4-检查index内是否存在该tuple；修改tableHeap内插入的tuple的tupleMeta；修改txn内的writeset */
+    // 检查index内是否存在该tuple
+    for (const auto &index : indexes_) {
+      Tuple key = child_tuple.KeyFromTuple(table_info_->schema_, index->key_schema_, index->index_->GetKeyAttrs());
+      std::vector<RID> result;
+      index->index_->ScanKey(key, &result, exec_ctx_->GetTransaction());
+      if (!result.empty()) {  //若index存在该tuple，则发生冲突，abort该txn
+        exec_ctx_->GetTransaction()->SetTainted();
+        throw ExecutionException("txn's inserting tuple already exists in the index");
+      }
+    }
 
-    /** proj4-修改tableHeap内插入的tuple的tupleMeta；修改txn内的writeset */
-    // TODO:怎么添加check函数
-    table_info_->table_->UpdateTupleMeta(TupleMeta{exec_ctx_->GetTransaction()->GetTransactionTempTs(), false},
-                                         insert_rid.value());
+    // 修改tableHeap，插入child_tuple;meta传入相应的数据
+    auto insert_rid =
+        table_info_->table_->InsertTuple(TupleMeta{exec_ctx_->GetTransaction()->GetTransactionTempTs(), false},
+                                         child_tuple, exec_ctx_->GetLockManager(), exec_ctx_->GetTransaction());
+
     exec_ctx_->GetTransaction()->AppendWriteSet(plan_->GetTableOid(), insert_rid.value());
 
     // 对每个index都插入相关数据
     for (const auto &index : indexes_) {
       Tuple key = child_tuple.KeyFromTuple(table_info_->schema_, index->key_schema_, index->index_->GetKeyAttrs());
-      index->index_->InsertEntry(key, insert_rid.value(), exec_ctx_->GetTransaction());
+      if (!index->index_->InsertEntry(key, insert_rid.value(), exec_ctx_->GetTransaction())) {
+        exec_ctx_->GetTransaction()->SetTainted();
+        throw ExecutionException("txn's inserting tuple is already inserted into the index");
+      }
     }
     insert_rows++;
   }

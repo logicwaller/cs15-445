@@ -78,10 +78,11 @@ auto ReconstructTuple(const Schema *schema, const Tuple &base_tuple, const Tuple
   if (undo_logs.empty()) {        //若无undo_log
     if (base_meta.is_deleted_) {  //若无undo_log且已被删除，则返回null
       return std::nullopt;
-    } else {  //若无undo_log且未被删除，则返回原base_tuple
-      return base_tuple;
     }
-  } else if (undo_logs.back().is_deleted_) {  //若undo_log最后一项为delete则返回null
+    //若无undo_log且未被删除，则返回原base_tuple
+    return base_tuple;
+  }
+  if (undo_logs.back().is_deleted_) {  //若undo_log最后一项为delete则返回null
     return std::nullopt;
   }
 
@@ -194,12 +195,12 @@ auto GenerateUpdatedUndoLog(const Schema *schema, const Tuple *base_tuple, const
   std::pair<std::vector<bool>, Tuple> modified_pair;
   const auto &column_size = schema->GetColumnCount();
   //若base_tuple为nullptr,则说明上次进行删除，log内存储的即为原始tuple；否则正常使用base_tuple即可
-  const Tuple *origin_tuple = base_tuple == nullptr ? &log.tuple_ : base_tuple;
+  const Tuple *origin_tuple = (base_tuple == nullptr ? &log.tuple_ : base_tuple);
   if (target_tuple == nullptr) {  //若本次进行删除，则视为更改了所有value
     modified_pair.first = std::vector<bool>(column_size, true);
     modified_pair.second = *origin_tuple;
   } else {
-    modified_pair = GenerateDiffBetweenTuples(schema, base_tuple, target_tuple);
+    modified_pair = GenerateDiffBetweenTuples(schema, origin_tuple, target_tuple);
   }
 
   // 进行增量更新log
@@ -372,9 +373,10 @@ auto IsWriteWriteConflict(const RID &rid, const TableInfo *table_info, const Tra
 auto GenerateNullTupleForSchema(const Schema *schema) -> Tuple {
   std::vector<Value> res_value;
   const auto &columns = schema->GetColumns();
+  res_value.reserve(columns.size());
   for (const auto &column : columns) {
     res_value.emplace_back(ValueFactory::GetNullValueByType(column.GetType()));
   }
-  return Tuple(res_value, schema);
+  return {Tuple(res_value, schema)};
 }
 }  // namespace bustub

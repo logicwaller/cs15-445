@@ -101,7 +101,8 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
 
   if (!delete_tuples_.empty()) {  // 若本次executor删除过数据，则返回true
     // 返回插入的行数
-    *tuple = Tuple(std::vector<Value>{Value(TypeId::INTEGER, (int)delete_tuples_.size())}, &GetOutputSchema());
+    *tuple =
+        Tuple(std::vector<Value>{Value(TypeId::INTEGER, static_cast<int>(delete_tuples_.size()))}, &GetOutputSchema());
     have_deleted_ = true;
     return true;
   }
