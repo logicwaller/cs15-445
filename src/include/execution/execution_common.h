@@ -19,6 +19,7 @@
 #include "catalog/catalog.h"
 #include "catalog/schema.h"
 #include "concurrency/transaction.h"
+#include "execution/plans/abstract_plan.h"
 #include "storage/table/tuple.h"
 #include "type/value_factory.h"
 
@@ -95,4 +96,6 @@ auto IsWriteWriteConflict(const RID &rid, const TableInfo *table_info, const Tra
 
 auto GenerateNullTupleForSchema(const Schema *schema) -> Tuple;
 
+void GenerateLogAndUpdateTuple(const Tuple *old_tuple, const Tuple *new_tuple, const TableInfo *table_info,
+                               Transaction *txn, TransactionManager *txn_mgr);
 }  // namespace bustub

@@ -379,4 +379,48 @@ auto GenerateNullTupleForSchema(const Schema *schema) -> Tuple {
   }
   return {Tuple(res_value, schema)};
 }
+
+/**
+ * @brief 生成从old_tuple更新到new_tuple的undo_log后进行更新
+ *        若tuple是同一txn插入后再删除的，则只修改tuple;否则生成相应的undo_log，更新tuple和log
+ * @param new_tuple 新tuple的指针，若是nullptr则说明是删除
+ */
+void GenerateLogAndUpdateTuple(const Tuple *old_tuple, const Tuple *new_tuple, const TableInfo *table_info,
+                               Transaction *txn, TransactionManager *txn_mgr) {
+  const auto &schema = table_info->schema_;
+  const auto &tuple_rid = old_tuple->GetRid();
+  const auto &tuple_meta = table_info->table_->GetTupleMeta(old_tuple->GetRid());
+
+  // 更新undo_log和tuple
+  const auto &last_undo_link = txn_mgr->GetUndoLink(tuple_rid);  //获取该tuple的上个link
+  if (!last_undo_link.has_value() && tuple_meta.ts_ == txn->GetTransactionTempTs()) {
+    // 若没有last_link且该tuple是本次txn进行修改,则说明该tuple为本次txn插入，无需修改undo_log
+    if (new_tuple) {  //若不是删除，则更新tuple和meta
+      table_info->table_->UpdateTupleInPlace(TupleMeta{txn->GetTransactionTempTs(), false}, *new_tuple, tuple_rid);
+    } else {  //若是删除，则只更新meta即可
+      table_info->table_->UpdateTupleMeta(TupleMeta{txn->GetTransactionTempTs(), true}, tuple_rid);
+    }
+
+  } else {
+    //若last_undo_link有值，则正常更新
+    if (tuple_meta.ts_ != txn->GetTransactionTempTs()) {  // 若是第一次更新，则产生new_log
+      const auto &undo_log =
+          GenerateNewUndoLog(&schema, old_tuple, new_tuple, tuple_meta.ts_,
+                             last_undo_link.has_value() ? last_undo_link.value() : UndoLink{INVALID_TXN_ID, 0});
+      txn_mgr->UpdateUndoLink(tuple_rid, txn->AppendUndoLog(undo_log));
+    } else {  //否则进行update_log
+      UndoLog undo_log;
+      undo_log = GenerateUpdatedUndoLog(&schema, old_tuple, new_tuple, txn_mgr->GetUndoLog(last_undo_link.value()));
+      txn->ModifyUndoLog(txn_mgr->GetUndoLink(tuple_rid)->prev_log_idx_, undo_log);
+    }
+    const auto &undo_link = txn_mgr->GetUndoLink(tuple_rid);
+
+    // 进行更新
+    if (!UpdateTupleAndUndoLink(txn_mgr, tuple_rid, undo_link, table_info->table_.get(), txn,
+                                TupleMeta{txn->GetTransactionTempTs(), new_tuple ? false : true},
+                                new_tuple ? *new_tuple : *old_tuple)) {
+      throw ExecutionException("UpdateInplace error");
+    }
+  }
+}
 }  // namespace bustub

@@ -56,37 +56,11 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
 
   const auto &txn = exec_ctx_->GetTransaction();
   const auto &txn_mgr = exec_ctx_->GetTransactionManager();
-  const auto &child_schema = plan_->GetChildPlan()->OutputSchema();
-  const auto &null_tuple = GenerateNullTupleForSchema(&child_schema);
   for (const auto &old_tuple : delete_tuples_) {
     const auto &tuple_rid = old_tuple.GetRid();
-    const auto &tuple_meta = table_info_->table_->GetTupleMeta(old_tuple.GetRid());
 
     // 更新undo_log和tuple_meta
-    const auto &last_undo_link = txn_mgr->GetUndoLink(tuple_rid);  //获取该tuple的上个link
-    if (!last_undo_link.has_value() && tuple_meta.ts_ == txn->GetTransactionTempTs()) {
-      // 若没有last_link且该tuple是本次txn进行修改,则说明该tuple为本次txn插入，无需修改undo_log
-      table_info_->table_->UpdateTupleMeta(TupleMeta{txn->GetTransactionTempTs(), true}, tuple_rid);
-    } else {                                                                        //否则正常更新
-      if (tuple_meta.ts_ != exec_ctx_->GetTransaction()->GetTransactionTempTs()) {  // 若是第一次更新，则产生new_log
-        const auto &undo_log =
-            GenerateNewUndoLog(&child_schema, &old_tuple, nullptr, tuple_meta.ts_,
-                               last_undo_link.has_value() ? last_undo_link.value() : UndoLink{INVALID_TXN_ID, 0});
-        txn_mgr->UpdateUndoLink(tuple_rid, txn->AppendUndoLog(undo_log));
-      } else {  //否则进行update_log
-        UndoLog undo_log;
-        undo_log =
-            GenerateUpdatedUndoLog(&child_schema, &old_tuple, nullptr, txn_mgr->GetUndoLog(last_undo_link.value()));
-        txn->ModifyUndoLog(txn_mgr->GetUndoLink(tuple_rid)->prev_log_idx_, undo_log);
-      }
-      const auto &undo_link = txn_mgr->GetUndoLink(tuple_rid);
-
-      // 更新tuple和undolog TODO:传入什么check函数
-      if (!UpdateTupleAndUndoLink(txn_mgr, tuple_rid, undo_link, table_info_->table_.get(), txn,
-                                  TupleMeta{txn->GetTransactionTempTs(), true}, null_tuple)) {
-        throw ExecutionException("UpdateInplace error");
-      }
-    }
+    GenerateLogAndUpdateTuple(&old_tuple, nullptr, table_info_, txn, txn_mgr);
 
     // 向txn的writeSet添加记录
     txn->AppendWriteSet(plan_->GetTableOid(), tuple_rid);
@@ -108,37 +82,6 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
   }
   // 若未删除过数据，则返回false
   return false;
-
-  /** proj4-以下无用 */
-  // // 记录删除的行数
-  // int32_t delete_rows = 0;
-  // while (true) {
-  //   // 获取child_exec的下一个tuple
-  //   Tuple child_tuple{};
-  //   const bool status = child_executor_->Next(&child_tuple, rid);
-
-  //   if (!status) {           // 若child_exec没有next
-  //     if (!have_deleted_) {  // 若本次executor更新过数据，则返回true
-  //       *tuple = Tuple(std::vector<Value>{Value(TypeId::INTEGER, delete_rows)}, &GetOutputSchema());
-  //       have_deleted_ = true;
-  //       return true;
-  //     }
-  //     return false;
-  //   }
-
-  //   auto tuple_meta = table_info_->table_->GetTupleMeta(*rid);
-
-  //   // 进行删除
-  //   tuple_meta.is_deleted_ = true;
-  //   table_info_->table_->UpdateTupleMeta(tuple_meta, *rid);
-  //   // 在index里删除相应记录
-  //   for (const auto &index : indexes_) {
-  //     Tuple key = child_tuple.KeyFromTuple(table_info_->schema_, index->key_schema_, index->index_->GetKeyAttrs());
-  //     index->index_->DeleteEntry(key, *rid, exec_ctx_->GetTransaction());
-  //   }
-
-  //   delete_rows++;
-  // }
 }
 
 }  // namespace bustub

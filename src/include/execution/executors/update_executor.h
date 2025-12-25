@@ -71,7 +71,6 @@ class UpdateExecutor : public AbstractExecutor {
   bool have_updated_;
 
   std::vector<std::shared_ptr<IndexInfo>> indexes_;
-  const Schema child_schema_;  // child_schema即为table本身的schema
 
   /** proj4-临时存储待更新的tuple */
   std::vector<Tuple> update_tuples_;
