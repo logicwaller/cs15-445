@@ -92,10 +92,18 @@ auto GenerateDiffBetweenTuples(const Schema *schema, const Tuple *base_tuple, co
 
 auto GetUndoLogSchema(const UndoLog &log, const Schema *base_schema) -> Schema;
 
-auto IsWriteWriteConflict(const RID &rid, const TableInfo *table_info, const Transaction *txn, bool is_delete) -> bool;
+auto IsWriteWriteConflict(const RID &rid, const TupleMeta &tuple_meta, const Transaction *txn, bool is_delete) -> bool;
 
 auto GenerateNullTupleForSchema(const Schema *schema) -> Tuple;
 
-void GenerateLogAndUpdateTuple(const Tuple *old_tuple, const Tuple *new_tuple, const TableInfo *table_info,
-                               Transaction *txn, TransactionManager *txn_mgr);
+void GenerateLogAndUpdateTuple(const Tuple *old_tuple, const Tuple *new_tuple, const TupleMeta &tuple_meta,
+                               const std::optional<UndoLink> &undo_link, const TableInfo *table_info, Transaction *txn,
+                               TransactionManager *txn_mgr);
+
+void GenerateTupleVisibleToLog(Transaction *txn, TransactionManager *txn_mgr, std::pair<TupleMeta, Tuple> *base_tuple,
+                               const Schema *schema);
+
+void InsertOrUpdateDelTuple(const Tuple &tuple, table_oid_t table_oid,
+                            const std::vector<std::shared_ptr<IndexInfo>> &indexes_, const TableInfo *table_info_,
+                            LockManager *lock_mgr, Transaction *txn, TransactionManager *txn_mgr);
 }  // namespace bustub

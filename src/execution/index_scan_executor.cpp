@@ -54,9 +54,14 @@ auto IndexScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
                      exec_ctx_->GetTransaction());
     }
 
-    // 遍历查找到的rid(由于本数据库不支持多索引，所以result_rid只会有一个)
+    // 遍历查找到的rid(由于本数据库不支持重复索引，所以result_rid其实只会有一个值)
     for (const auto &res_rid : result_rid) {
       auto pair = table_info_->table_->GetTuple(res_rid);
+
+      /** proj4-对获取的tuple进行处理，返回txn中的read_ts时可见的tuple */
+      GenerateTupleVisibleToLog(exec_ctx_->GetTransaction(), exec_ctx_->GetTransactionManager(), &pair,
+                                &GetOutputSchema());
+
       if (!pair.first.is_deleted_) {
         *tuple = pair.second;
         *rid = res_rid;

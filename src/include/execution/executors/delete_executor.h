@@ -71,6 +71,6 @@ class DeleteExecutor : public AbstractExecutor {
   std::vector<std::shared_ptr<IndexInfo>> indexes_;
 
   /** proj4-临时存储所有待删除的tuple */
-  std::vector<Tuple> delete_tuples_;
+  std::vector<RID> delete_tuples_rid_;
 };
 }  // namespace bustub

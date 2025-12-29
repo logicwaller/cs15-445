@@ -88,14 +88,16 @@ auto ReconstructTuple(const Schema *schema, const Tuple &base_tuple, const Tuple
 
   // 遍历undo_logs，进行相应修改
   for (const auto &undo_log : undo_logs) {
-    // 获取被更改的schema
-    const auto &mod_schema = GetUndoLogSchema(undo_log, schema);
+    if (!undo_log.is_deleted_) {  //只重建未被删除的log
+      // 获取被更改的schema
+      const auto &mod_schema = GetUndoLogSchema(undo_log, schema);
 
-    // 解析log中的tuple_并将更改应用于res_tuple
-    uint32_t mod_index = 0;  //记录更改到第几个mod_schema
-    for (uint32_t i = 0; i < schema_size; i++) {
-      if (undo_log.modified_fields_[i]) {  //在被修改的部分插入被修改后的value
-        moded_values[i] = undo_log.tuple_.GetValue(&mod_schema, mod_index++);
+      // 解析log中的tuple_并将更改应用于res_tuple
+      uint32_t mod_index = 0;  //记录更改到第几个mod_schema
+      for (uint32_t i = 0; i < schema_size; i++) {
+        if (undo_log.modified_fields_[i]) {  //在被修改的部分插入被修改后的value
+          moded_values[i] = undo_log.tuple_.GetValue(&mod_schema, mod_index++);
+        }
       }
     }
   }
@@ -195,7 +197,7 @@ auto GenerateUpdatedUndoLog(const Schema *schema, const Tuple *base_tuple, const
   std::pair<std::vector<bool>, Tuple> modified_pair;
   const auto &column_size = schema->GetColumnCount();
   //若base_tuple为nullptr,则说明上次进行删除，log内存储的即为原始tuple；否则正常使用base_tuple即可
-  const Tuple *origin_tuple = (base_tuple == nullptr ? &log.tuple_ : base_tuple);
+  const Tuple *origin_tuple = (base_tuple != nullptr ? base_tuple : &log.tuple_);
   if (target_tuple == nullptr) {  //若本次进行删除，则视为更改了所有value
     modified_pair.first = std::vector<bool>(column_size, true);
     modified_pair.second = *origin_tuple;
@@ -353,9 +355,7 @@ auto GetUndoLogSchema(const UndoLog &log, const Schema *base_schema) -> Schema {
  *
  * @param is_delete 若为true则是删除操作；否则为更新操作
  */
-auto IsWriteWriteConflict(const RID &rid, const TableInfo *table_info, const Transaction *txn, bool is_delete) -> bool {
-  const auto &tuple_meta = table_info->table_->GetTupleMeta(rid);
-
+auto IsWriteWriteConflict(const RID &rid, const TupleMeta &tuple_meta, const Transaction *txn, bool is_delete) -> bool {
   if (tuple_meta.ts_ != txn->GetTransactionTempTs()) {
     // 若(case1)正删除一个已被其他txn删除的tuple 或(case2)tuple正被别的未提交的txn修改
     // 或(case3)tuple已被提交且提交时间比txn的read_ts更新，则视为出现冲突
@@ -383,43 +383,129 @@ auto GenerateNullTupleForSchema(const Schema *schema) -> Tuple {
 /**
  * @brief 生成从old_tuple更新到new_tuple的undo_log后进行更新
  *        若tuple是同一txn插入后再删除的，则只修改tuple;否则生成相应的undo_log，更新tuple和log
+ *        在txn内使用AppendWriteSet添加记录
+ *
+ * @param old_tuple 旧tuple的指针，要求不为空其rid为有效值
  * @param new_tuple 新tuple的指针，若是nullptr则说明是删除
+ *
+ * @return 若出现冲突则返回false，否则返回true
  */
-void GenerateLogAndUpdateTuple(const Tuple *old_tuple, const Tuple *new_tuple, const TableInfo *table_info,
-                               Transaction *txn, TransactionManager *txn_mgr) {
+void GenerateLogAndUpdateTuple(const Tuple *old_tuple, const Tuple *new_tuple, const TupleMeta &tuple_meta,
+                               const std::optional<UndoLink> &undo_link, const TableInfo *table_info, Transaction *txn,
+                               TransactionManager *txn_mgr) {
   const auto &schema = table_info->schema_;
   const auto &tuple_rid = old_tuple->GetRid();
-  const auto &tuple_meta = table_info->table_->GetTupleMeta(old_tuple->GetRid());
 
-  // 更新undo_log和tuple
-  const auto &last_undo_link = txn_mgr->GetUndoLink(tuple_rid);  //获取该tuple的上个link
-  if (!last_undo_link.has_value() && tuple_meta.ts_ == txn->GetTransactionTempTs()) {
-    // 若没有last_link且该tuple是本次txn进行修改,则说明该tuple为本次txn插入，无需修改undo_log
-    if (new_tuple) {  //若不是删除，则更新tuple和meta
+  if (!undo_link.has_value() && tuple_meta.ts_ == txn->GetTransactionTempTs()) {
+    // 若没有undo_link且该tuple是本次txn进行修改,则说明该tuple为本次txn插入，无需修改undo_log
+    if (new_tuple != nullptr) {  //若不是删除，则更新tuple和meta
       table_info->table_->UpdateTupleInPlace(TupleMeta{txn->GetTransactionTempTs(), false}, *new_tuple, tuple_rid);
     } else {  //若是删除，则只更新meta即可
       table_info->table_->UpdateTupleMeta(TupleMeta{txn->GetTransactionTempTs(), true}, tuple_rid);
     }
+  } else if (tuple_meta.ts_ != txn->GetTransactionTempTs()) {  // 若是第一次更新，则产生new_log
+    const auto &undo_log =
+        GenerateNewUndoLog(&schema, tuple_meta.is_deleted_ ? nullptr : old_tuple, new_tuple, tuple_meta.ts_,
+                           undo_link.has_value() ? undo_link.value() : UndoLink{INVALID_TXN_ID, 0});
+    // 在txn内添加记录
+    txn->AppendWriteSet(table_info->oid_, tuple_rid);
 
-  } else {
-    //若last_undo_link有值，则正常更新
-    if (tuple_meta.ts_ != txn->GetTransactionTempTs()) {  // 若是第一次更新，则产生new_log
-      const auto &undo_log =
-          GenerateNewUndoLog(&schema, old_tuple, new_tuple, tuple_meta.ts_,
-                             last_undo_link.has_value() ? last_undo_link.value() : UndoLink{INVALID_TXN_ID, 0});
-      txn_mgr->UpdateUndoLink(tuple_rid, txn->AppendUndoLog(undo_log));
-    } else {  //否则进行update_log
-      UndoLog undo_log;
-      undo_log = GenerateUpdatedUndoLog(&schema, old_tuple, new_tuple, txn_mgr->GetUndoLog(last_undo_link.value()));
-      txn->ModifyUndoLog(txn_mgr->GetUndoLink(tuple_rid)->prev_log_idx_, undo_log);
+    // 判断是否发生同步冲突
+    if (!UpdateTupleAndUndoLink(
+            txn_mgr, tuple_rid, txn->AppendUndoLog(undo_log), table_info->table_.get(), txn,
+            TupleMeta{txn->GetTransactionTempTs(), new_tuple == nullptr},
+            new_tuple != nullptr ? *new_tuple : *old_tuple,
+            [&](const TupleMeta &meta, const Tuple &tuple, RID rid, std::optional<UndoLink> undo_link) {
+              // 第一次更新时，更新的undo_log应该与table_heap储存的tuple_meta内容一模一样
+              return undo_log.ts_ == meta.ts_;
+            })) {
+      txn->SetTainted();
+      throw ExecutionException("Insert Executor : concurrency error");
     }
-    const auto &undo_link = txn_mgr->GetUndoLink(tuple_rid);
+  } else {  //若本txn不是第一次修改该tuple，则进行update_log
+    const auto &undo_log = GenerateUpdatedUndoLog(&schema, tuple_meta.is_deleted_ ? nullptr : old_tuple, new_tuple,
+                                                  txn_mgr->GetUndoLog(undo_link.value()));
+    txn->ModifyUndoLog(txn_mgr->GetUndoLink(tuple_rid)->prev_log_idx_, undo_log);
 
-    // 进行更新
+    // 判断是否发生同步冲突，txn不是第一次更新的话就无需传入check函数判断，因为此时的冲突只可能是写-写冲突，已在别处判断过
     if (!UpdateTupleAndUndoLink(txn_mgr, tuple_rid, undo_link, table_info->table_.get(), txn,
-                                TupleMeta{txn->GetTransactionTempTs(), new_tuple ? false : true},
-                                new_tuple ? *new_tuple : *old_tuple)) {
-      throw ExecutionException("UpdateInplace error");
+                                TupleMeta{txn->GetTransactionTempTs(), new_tuple == nullptr},
+                                new_tuple != nullptr ? *new_tuple : *old_tuple)) {
+      txn->SetTainted();
+      throw ExecutionException("Insert Executor : concurrency error");
+    }
+  }
+}
+
+/**
+ * @brief 获取base_tuple中对于txn的read_ts_时刻可见的tuple，结果仍存在base_tuple中
+ */
+void GenerateTupleVisibleToLog(Transaction *txn, TransactionManager *txn_mgr, std::pair<TupleMeta, Tuple> *base_tuple,
+                               const Schema *schema) {
+  const auto &tuple_rid = base_tuple->second.GetRid();
+  auto undo_log =
+      CollectUndoLogs(tuple_rid, base_tuple->first, base_tuple->second, txn_mgr->GetUndoLink(tuple_rid), txn, txn_mgr);
+  if (!undo_log.has_value()) {
+    base_tuple->first.is_deleted_ = true;
+  } else {
+    auto new_tuple = ReconstructTuple(schema, base_tuple->second, base_tuple->first, undo_log.value());
+    if (!new_tuple.has_value()) {
+      base_tuple->first.is_deleted_ = true;
+    } else {
+      base_tuple->second = new_tuple.value();
+      base_tuple->first.is_deleted_ = false;  //若有值则设置is_deleted为false
+    }
+  }
+}
+
+/**
+ * @brief 插入一个tuple，若其不存在于indexes中则正常插入；
+ *        否则检测indexes中的记录是否为deleted tuple，若是则更新那条tuple，若不是则说明出现写-写冲突
+ *
+ */
+void InsertOrUpdateDelTuple(const Tuple &tuple, table_oid_t table_oid,
+                            const std::vector<std::shared_ptr<IndexInfo>> &indexes, const TableInfo *table_info,
+                            LockManager *lock_mgr, Transaction *txn, TransactionManager *txn_mgr) {
+  // 检查index内是否存在该tuple
+  bool is_exist_tuple_deleted = false;  //记录是否在index中存在被删除的tuple
+  for (const auto &index : indexes) {
+    Tuple key = tuple.KeyFromTuple(table_info->schema_, index->key_schema_, index->index_->GetKeyAttrs());
+    std::vector<RID> result;
+    index->index_->ScanKey(key, &result, txn);
+    if (!result.empty()) {  //若index存在该tuple
+      const auto &exist_rid = result.back();
+      const auto &[tuple_meta, exist_tuple, undo_link] =
+          GetTupleAndUndoLink(txn_mgr, table_info->table_.get(), exist_rid);
+      if (tuple_meta.is_deleted_) {  //若该tuple是被删除的，则更新该tuple
+        // 若出现写-写冲突或插入时发生同步错误，则设置改txn为tainted
+        if (IsWriteWriteConflict(exist_rid, tuple_meta, txn, false)) {
+          txn->SetTainted();
+          throw ExecutionException("Insert Executor : concurrency error");
+        }
+        GenerateLogAndUpdateTuple(&exist_tuple, &tuple, tuple_meta, undo_link, table_info, txn, txn_mgr);
+        is_exist_tuple_deleted = true;
+      } else {  //否则出现写-写冲突
+        txn->SetTainted();
+        throw ExecutionException("txn's inserting tuple already exists in the index");
+      }
+    }
+  }
+  if (is_exist_tuple_deleted) {  //若index存在被删除的tuple，则直接原地更新该tuple，无需再插入
+    return;
+  }
+
+  // 修改tableHeap，插入child_tuple;meta传入相应的数据
+  auto insert_rid =
+      table_info->table_->InsertTuple(TupleMeta{txn->GetTransactionTempTs(), false}, tuple, lock_mgr, txn);
+
+  txn->AppendWriteSet(table_oid, insert_rid.value());
+
+  // 对每个index都插入相关数据
+  for (const auto &index : indexes) {
+    Tuple key = tuple.KeyFromTuple(table_info->schema_, index->key_schema_, index->index_->GetKeyAttrs());
+    if (!index->index_->InsertEntry(key, insert_rid.value(), txn)) {
+      txn->SetTainted();
+      throw ExecutionException("txn's inserting tuple is already inserted into the index");
     }
   }
 }

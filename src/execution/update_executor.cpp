@@ -40,14 +40,7 @@ void UpdateExecutor::Init() {
     if (!status) {
       break;
     }
-    // 判断是否出现写-写冲突
-    if (IsWriteWriteConflict(rid, table_info_, exec_ctx_->GetTransaction(), false)) {
-      // 若出现写-写冲突，则abort txn并将txn设置为tainted，最终throw ExecutionException
-      // exec_ctx_->GetTransactionManager()->Abort(exec_ctx_->GetTransaction());
-      exec_ctx_->GetTransaction()->SetTainted();
-      throw ExecutionException("write-write conflict");
-    }
-    update_tuples_.emplace_back(child_tuple);
+    update_tuples_rid_.emplace_back(child_tuple.GetRid());
   }
 }
 
@@ -59,8 +52,20 @@ auto UpdateExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
 
   const auto &txn = exec_ctx_->GetTransaction();
   const auto &txn_mgr = exec_ctx_->GetTransactionManager();
-  for (const auto &old_tuple : update_tuples_) {
-    const auto &tuple_rid = old_tuple.GetRid();
+
+  // 若进行主键更新，则记录需要更新的新旧tuple
+  std::vector<Tuple> new_tuples;
+
+  for (const auto &tuple_rid : update_tuples_rid_) {
+    const auto &[tuple_meta, old_tuple, undo_link] = GetTupleAndUndoLink(txn_mgr, table_info_->table_.get(), tuple_rid);
+
+    // 判断是否出现写-写冲突
+    if (IsWriteWriteConflict(tuple_rid, tuple_meta, exec_ctx_->GetTransaction(), false)) {
+      // 若出现写-写冲突，则abort txn并将txn设置为tainted，最终throw ExecutionException
+      // exec_ctx_->GetTransactionManager()->Abort(exec_ctx_->GetTransaction());
+      exec_ctx_->GetTransaction()->SetTainted();
+      throw ExecutionException("write-write conflict");
+    }
 
     // 获取更新后的tuple
     std::vector<Value> values{};
@@ -70,28 +75,50 @@ auto UpdateExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     }
     Tuple new_tuple = Tuple{values, &table_info_->schema_};
 
-    // 更新undo_log和tuple
-    GenerateLogAndUpdateTuple(&old_tuple, &new_tuple, table_info_, txn, txn_mgr);
-
-    // 向txn的writeSet添加记录
-    txn->AppendWriteSet(plan_->GetTableOid(), tuple_rid);
-
-    // 更新index
-    for (const auto &index : indexes_) {
-      // 对每个index进行删除
-      Tuple old_key = old_tuple.KeyFromTuple(table_info_->schema_, index->key_schema_, index->index_->GetKeyAttrs());
-      index->index_->DeleteEntry(old_key, tuple_rid, exec_ctx_->GetTransaction());
-
-      // 对每个index进行插入
-      Tuple new_key = new_tuple.KeyFromTuple(table_info_->schema_, index->key_schema_, index->index_->GetKeyAttrs());
-      index->index_->InsertEntry(new_key, tuple_rid, exec_ctx_->GetTransaction());
+    // 更新index，tuple，undo_log
+    if (indexes_.empty()) {  //若没有索引，则正常原地更新
+      GenerateLogAndUpdateTuple(&old_tuple, &new_tuple, tuple_meta, undo_link, table_info_, txn, txn_mgr);
+      // 向txn的writeSet添加记录
+      txn->AppendWriteSet(plan_->GetTableOid(), tuple_rid);
+    } else {
+      for (const auto &index : indexes_) {
+        // 对每个index进行更新
+        if (index->is_primary_key_) {  //进行主键更新
+          Tuple old_key =
+              old_tuple.KeyFromTuple(table_info_->schema_, index->key_schema_, index->index_->GetKeyAttrs());
+          Tuple new_key =
+              new_tuple.KeyFromTuple(table_info_->schema_, index->key_schema_, index->index_->GetKeyAttrs());
+          if (!IsTupleContentEqual(old_key, new_key)) {  //若更改主键
+            // 先删除old_tuple
+            GenerateLogAndUpdateTuple(&old_tuple, nullptr, tuple_meta, undo_link, table_info_, txn, txn_mgr);
+            // 然后缓存new_tuple，待遍历所有old_tuple后再执行插入
+            new_tuples.push_back(new_tuple);
+          } else {  //若未更新主键，则原地更新
+            // 更新undo_log和tuple
+            GenerateLogAndUpdateTuple(&old_tuple, &new_tuple, tuple_meta, undo_link, table_info_, txn, txn_mgr);
+          }
+        } else {  //本实现不支持非主键更新
+          UNIMPLEMENTED("Non-primary key update is not implemented");
+        }
+      }
     }
   }
 
-  if (!update_tuples_.empty()) {  // 若本次executor更新过数据，则返回true
+  // 若new_tuples不为空，则说明需要进行主键更新
+  if (!new_tuples.empty()) {
+    BUSTUB_ENSURE(indexes_.size() == 1, "primary key update must only have one index");
+    BUSTUB_ENSURE(new_tuples.size() == update_tuples_rid_.size(), "primary key update must ensure updating all tuples");
+    // 遍历所有的new_tuple，进行插入
+    for (const auto &tuple : new_tuples) {
+      InsertOrUpdateDelTuple(tuple, plan_->GetTableOid(), indexes_, table_info_, exec_ctx_->GetLockManager(), txn,
+                             txn_mgr);
+    }
+  }
+
+  if (!update_tuples_rid_.empty()) {  // 若本次executor更新过数据，则返回true
     // 返回插入的行数
-    *tuple =
-        Tuple(std::vector<Value>{Value(TypeId::INTEGER, static_cast<int>(update_tuples_.size()))}, &GetOutputSchema());
+    *tuple = Tuple(std::vector<Value>{Value(TypeId::INTEGER, static_cast<int>(update_tuples_rid_.size()))},
+                   &GetOutputSchema());
     have_updated_ = true;
     return true;
   }

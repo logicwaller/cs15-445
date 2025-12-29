@@ -32,22 +32,9 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     auto pair = iterator_->GetTuple();
     ++*iterator_;
 
-    /** proj4-对当前获取的tuple进行处理，返回txn中的read_ts时的tuple */
-    auto txn_manager = exec_ctx_->GetTransactionManager();
-    const auto &tuple_rid = pair.second.GetRid();
-    auto undo_log = CollectUndoLogs(tuple_rid, pair.first, pair.second, txn_manager->GetUndoLink(tuple_rid),
-                                    exec_ctx_->GetTransaction(), txn_manager);
-    if (!undo_log.has_value()) {
-      pair.first.is_deleted_ = true;
-    } else {
-      auto new_tuple = ReconstructTuple(plan_->output_schema_.get(), pair.second, pair.first, undo_log.value());
-      if (!new_tuple.has_value()) {
-        pair.first.is_deleted_ = true;
-      } else {
-        pair.second = new_tuple.value();
-        pair.first.is_deleted_ = false;  //若有值则设置is_deleted为false
-      }
-    }
+    /** proj4-对当前获取的tuple进行处理，返回txn中的read_ts时可见的tuple */
+    GenerateTupleVisibleToLog(exec_ctx_->GetTransaction(), exec_ctx_->GetTransactionManager(), &pair,
+                              &GetOutputSchema());
 
     if (!pair.first.is_deleted_) {  // 若没被删则返回该tuple
       *tuple = pair.second;

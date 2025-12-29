@@ -73,6 +73,6 @@ class UpdateExecutor : public AbstractExecutor {
   std::vector<std::shared_ptr<IndexInfo>> indexes_;
 
   /** proj4-临时存储待更新的tuple */
-  std::vector<Tuple> update_tuples_;
+  std::vector<RID> update_tuples_rid_;
 };
 }  // namespace bustub

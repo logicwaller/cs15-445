@@ -37,14 +37,7 @@ void DeleteExecutor::Init() {
     if (!status) {
       break;
     }
-    // 判断是否出现写-写冲突
-    if (IsWriteWriteConflict(rid, table_info_, exec_ctx_->GetTransaction(), true)) {
-      // 若出现写-写冲突，则abort txn并将txn设置为tainted，最终throw ExecutionException
-      // exec_ctx_->GetTransactionManager()->Abort(exec_ctx_->GetTransaction());
-      exec_ctx_->GetTransaction()->SetTainted();
-      throw ExecutionException("write-write conflict");
-    }
-    delete_tuples_.emplace_back(child_tuple);
+    delete_tuples_rid_.emplace_back(child_tuple.GetRid());
   }
 }
 
@@ -56,27 +49,27 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
 
   const auto &txn = exec_ctx_->GetTransaction();
   const auto &txn_mgr = exec_ctx_->GetTransactionManager();
-  for (const auto &old_tuple : delete_tuples_) {
-    const auto &tuple_rid = old_tuple.GetRid();
+  for (const auto &tuple_rid : delete_tuples_rid_) {
+    const auto &[tuple_meta, old_tuple, undo_link] = GetTupleAndUndoLink(txn_mgr, table_info_->table_.get(), tuple_rid);
+
+    // 判断是否出现写-写冲突
+    if (IsWriteWriteConflict(tuple_rid, tuple_meta, exec_ctx_->GetTransaction(), true)) {
+      // 若出现写-写冲突，则abort txn并将txn设置为tainted，最终throw ExecutionException
+      // exec_ctx_->GetTransactionManager()->Abort(exec_ctx_->GetTransaction());
+      exec_ctx_->GetTransaction()->SetTainted();
+      throw ExecutionException("write-write conflict");
+    }
 
     // 更新undo_log和tuple_meta
-    GenerateLogAndUpdateTuple(&old_tuple, nullptr, table_info_, txn, txn_mgr);
+    GenerateLogAndUpdateTuple(&old_tuple, nullptr, tuple_meta, undo_link, table_info_, txn, txn_mgr);
 
-    // 向txn的writeSet添加记录
-    txn->AppendWriteSet(plan_->GetTableOid(), tuple_rid);
-
-    // 更新index
-    for (const auto &index : indexes_) {
-      // 对每个index进行删除
-      Tuple old_key = old_tuple.KeyFromTuple(table_info_->schema_, index->key_schema_, index->index_->GetKeyAttrs());
-      index->index_->DeleteEntry(old_key, tuple_rid, exec_ctx_->GetTransaction());
-    }
+    // proj4要求不在index内进行deleteEntry，只需要将index对应tuple设为删除状态即可
   }
 
-  if (!delete_tuples_.empty()) {  // 若本次executor删除过数据，则返回true
+  if (!delete_tuples_rid_.empty()) {  // 若本次executor删除过数据，则返回true
     // 返回插入的行数
-    *tuple =
-        Tuple(std::vector<Value>{Value(TypeId::INTEGER, static_cast<int>(delete_tuples_.size()))}, &GetOutputSchema());
+    *tuple = Tuple(std::vector<Value>{Value(TypeId::INTEGER, static_cast<int>(delete_tuples_rid_.size()))},
+                   &GetOutputSchema());
     have_deleted_ = true;
     return true;
   }

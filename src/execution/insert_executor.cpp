@@ -34,6 +34,8 @@ void InsertExecutor::Init() {
 auto InsertExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
   // 记录插入的行数
   int32_t insert_rows = 0;
+  const auto &txn = exec_ctx_->GetTransaction();
+  const auto &txn_mgr = exec_ctx_->GetTransactionManager();
   while (true) {
     // 获取child_exec的下一个tuple
     Tuple child_tuple{};
@@ -51,32 +53,8 @@ auto InsertExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     }
 
     /** proj4-检查index内是否存在该tuple；修改tableHeap内插入的tuple的tupleMeta；修改txn内的writeset */
-    // 检查index内是否存在该tuple
-    for (const auto &index : indexes_) {
-      Tuple key = child_tuple.KeyFromTuple(table_info_->schema_, index->key_schema_, index->index_->GetKeyAttrs());
-      std::vector<RID> result;
-      index->index_->ScanKey(key, &result, exec_ctx_->GetTransaction());
-      if (!result.empty()) {  //若index存在该tuple，则发生冲突，abort该txn
-        exec_ctx_->GetTransaction()->SetTainted();
-        throw ExecutionException("txn's inserting tuple already exists in the index");
-      }
-    }
-
-    // 修改tableHeap，插入child_tuple;meta传入相应的数据
-    auto insert_rid =
-        table_info_->table_->InsertTuple(TupleMeta{exec_ctx_->GetTransaction()->GetTransactionTempTs(), false},
-                                         child_tuple, exec_ctx_->GetLockManager(), exec_ctx_->GetTransaction());
-
-    exec_ctx_->GetTransaction()->AppendWriteSet(plan_->GetTableOid(), insert_rid.value());
-
-    // 对每个index都插入相关数据
-    for (const auto &index : indexes_) {
-      Tuple key = child_tuple.KeyFromTuple(table_info_->schema_, index->key_schema_, index->index_->GetKeyAttrs());
-      if (!index->index_->InsertEntry(key, insert_rid.value(), exec_ctx_->GetTransaction())) {
-        exec_ctx_->GetTransaction()->SetTainted();
-        throw ExecutionException("txn's inserting tuple is already inserted into the index");
-      }
-    }
+    InsertOrUpdateDelTuple(child_tuple, plan_->GetTableOid(), indexes_, table_info_.get(), exec_ctx_->GetLockManager(),
+                           txn, txn_mgr);
     insert_rows++;
   }
 }
