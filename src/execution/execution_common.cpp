@@ -122,7 +122,7 @@ auto ReconstructTuple(const Schema *schema, const Tuple &base_tuple, const Tuple
  */
 auto CollectUndoLogs(RID rid, const TupleMeta &base_meta, const Tuple &base_tuple, std::optional<UndoLink> undo_link,
                      Transaction *txn, TransactionManager *txn_mgr) -> std::optional<std::vector<UndoLog>> {
-  //若为提交的txn就是本txn 或 tuple已被提交且最新版本小于read_ts，则返回空log
+  //若未提交的txn就是本txn 或 tuple已被提交且最新版本小于read_ts，则返回空log
   if (base_meta.ts_ <= txn->GetReadTs() || base_meta.ts_ == txn->GetTransactionTempTs()) {
     return std::vector<UndoLog>();
   }
@@ -407,9 +407,6 @@ void GenerateLogAndUpdateTuple(const Tuple *old_tuple, const Tuple *new_tuple, c
     const auto &undo_log =
         GenerateNewUndoLog(&schema, tuple_meta.is_deleted_ ? nullptr : old_tuple, new_tuple, tuple_meta.ts_,
                            undo_link.has_value() ? undo_link.value() : UndoLink{INVALID_TXN_ID, 0});
-    // 在txn内添加记录
-    txn->AppendWriteSet(table_info->oid_, tuple_rid);
-
     // 判断是否发生同步冲突
     if (!UpdateTupleAndUndoLink(
             txn_mgr, tuple_rid, txn->AppendUndoLog(undo_log), table_info->table_.get(), txn,
@@ -422,10 +419,12 @@ void GenerateLogAndUpdateTuple(const Tuple *old_tuple, const Tuple *new_tuple, c
       txn->SetTainted();
       throw ExecutionException("Insert Executor : concurrency error");
     }
+
+    // 在txn内添加记录
+    txn->AppendWriteSet(table_info->oid_, tuple_rid);
   } else {  //若本txn不是第一次修改该tuple，则进行update_log
     const auto &undo_log = GenerateUpdatedUndoLog(&schema, tuple_meta.is_deleted_ ? nullptr : old_tuple, new_tuple,
                                                   txn_mgr->GetUndoLog(undo_link.value()));
-    txn->ModifyUndoLog(txn_mgr->GetUndoLink(tuple_rid)->prev_log_idx_, undo_log);
 
     // 判断是否发生同步冲突，txn不是第一次更新的话就无需传入check函数判断，因为此时的冲突只可能是写-写冲突，已在别处判断过
     if (!UpdateTupleAndUndoLink(txn_mgr, tuple_rid, undo_link, table_info->table_.get(), txn,
@@ -434,6 +433,9 @@ void GenerateLogAndUpdateTuple(const Tuple *old_tuple, const Tuple *new_tuple, c
       txn->SetTainted();
       throw ExecutionException("Insert Executor : concurrency error");
     }
+
+    // 在txn内修改相应undo_log
+    txn->ModifyUndoLog(txn_mgr->GetUndoLink(tuple_rid)->prev_log_idx_, undo_log);
   }
 }
 

@@ -41,6 +41,9 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       *rid = tuple->GetRid();
 
       if (plan_->filter_predicate_ != nullptr) {  // 若filter存在，检验该tuple是否能通过filter
+        /** proj4-在txn存储filter */
+        exec_ctx_->GetTransaction()->AppendScanPredicate(plan_->GetTableOid(), plan_->filter_predicate_);
+
         Value value = plan_->filter_predicate_->Evaluate(tuple, GetOutputSchema());
         if (value.CompareEquals(Value(TypeId::BOOLEAN, 1)) == CmpBool::CmpTrue) {
           // 若能通过fliter则返回

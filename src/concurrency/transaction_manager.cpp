@@ -49,7 +49,60 @@ auto TransactionManager::Begin(IsolationLevel isolation_level) -> Transaction * 
   return txn_ref;
 }
 
-auto TransactionManager::VerifyTxn(Transaction *txn) -> bool { return true; }
+auto TransactionManager::VerifyTxn(Transaction *txn) -> bool {
+  if (txn->write_set_.empty()) {  //只读的事务无需进行验证
+    return true;
+  }
+
+  // 遍历所有txn，获取commit_ts大于本txn的read_ts的txn所更改的rid
+  std::unordered_map<table_oid_t, std::unordered_set<RID>> conflict_rids;
+  for (const auto &[_, conflict_txn] : txn_map_) {
+    if (conflict_txn->GetCommitTs() > txn->GetReadTs()) {
+      for (const auto &[table_oid, rids] : conflict_txn->write_set_) {
+        conflict_rids[table_oid].insert(rids.begin(), rids.end());
+      }
+    }
+  }
+
+  // 对于所有的conflict_rid，判断是否到本txn获取之前有一个版本需要进行更改
+  for (const auto &[table_oid, rids] : conflict_rids) {
+    const auto &table_info = catalog_->GetTable(table_oid);
+    for (const auto &rid : rids) {
+      auto [tuple_meta, tuple, undo_link] = GetTupleAndUndoLink(this, table_info->table_.get(), rid);
+      const auto &undo_logs = CollectUndoLogs(rid, tuple_meta, tuple, undo_link, txn, this);
+      // 若undo_logs为null，则无需遍历
+      if (!undo_logs.has_value()) {
+        continue;
+      }
+
+      // 遍历每一个read_ts之后的版本，进行判断
+      for (const auto &undo_log : undo_logs.value()) {
+        // 对于每个版本(包括table_heap里的版本)，只要满足scan_predicate，就视为检验失败，返回false
+        for (const auto &filter : txn->scan_predicates_[table_oid]) {
+          if (filter->Evaluate(&tuple, table_info->schema_).CompareEquals(Value(TypeId::BOOLEAN, 1)) ==
+              CmpBool::CmpTrue) {
+            return false;
+          }
+        }
+
+        //由于undo_logs最后一个一定是小于等于read_ts的log，故无需遍历
+        if (undo_log.ts_ <= txn->GetReadTs()) {
+          break;
+        }
+
+        // 获取下一版本
+        const auto &tem_tuple =
+            ReconstructTuple(&table_info->schema_, tuple, tuple_meta, std::vector<UndoLog>{undo_log});
+        if (!tem_tuple.has_value()) {  //若tem_tuple为null，则说明该版本是删除，tuple设为全null
+          tuple = GenerateNullTupleForSchema(&table_info->schema_);
+        } else {
+          tuple = tem_tuple.value();
+        }
+      }
+    }
+  }
+  return true;
+}
 
 auto TransactionManager::Commit(Transaction *txn) -> bool {
   std::unique_lock<std::mutex> commit_lck(commit_mutex_);
@@ -103,6 +156,25 @@ void TransactionManager::Abort(Transaction *txn) {
   }
 
   // TODO(fall2023): Implement the abort logic!
+  const auto &write_set = txn->GetWriteSets();
+  for (const auto &[table_oid, rids] : write_set) {
+    const auto &table_info = catalog_->GetTable(table_oid);
+    for (const auto &rid : rids) {
+      const auto &[tuple_meta, tuple, undo_link] = GetTupleAndUndoLink(this, table_info->table_.get(), rid);
+      if (!undo_link.has_value() ||
+          !undo_link->IsValid()) {  //若tuple没有undo_link，则说明该tuple是txn自己插入，删除该txn即可
+        table_info->table_->UpdateTupleMeta(TupleMeta{0, true}, rid);
+      } else {  //否则将tuple回溯至txn更改之前
+        const auto &undo_log = GetUndoLog(undo_link.value());
+        const auto &new_tuple =
+            ReconstructTuple(&table_info->schema_, tuple, tuple_meta, std::vector<UndoLog>{undo_log});
+        // 插入回溯结果
+        UpdateTupleAndUndoLink(this, rid, undo_log.prev_version_, table_info->table_.get(), txn,
+                               TupleMeta{undo_log.ts_, undo_log.is_deleted_},
+                               new_tuple.has_value() ? new_tuple.value() : Tuple());
+      }
+    }
+  }
 
   std::unique_lock<std::shared_mutex> lck(txn_map_mutex_);
   txn->state_ = TransactionState::ABORTED;
@@ -113,7 +185,8 @@ void TransactionManager::GarbageCollection() {
   std::shared_lock<std::shared_mutex> map_lck(txn_map_mutex_);
   std::vector<txn_id_t> delete_txns;  //记录将被删除的txn_id
   for (const auto &[txn_id, txn] : txn_map_) {
-    if (txn->state_ == TransactionState::RUNNING || txn->state_ == TransactionState::TAINTED) {  //运行中的txn不会被删除
+    if (txn->state_ != TransactionState::COMMITTED &&
+        txn->state_ != TransactionState::ABORTED) {  //运行中的txn不会被删除
       continue;
     }
 

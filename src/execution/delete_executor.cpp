@@ -55,7 +55,6 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     // 判断是否出现写-写冲突
     if (IsWriteWriteConflict(tuple_rid, tuple_meta, exec_ctx_->GetTransaction(), true)) {
       // 若出现写-写冲突，则abort txn并将txn设置为tainted，最终throw ExecutionException
-      // exec_ctx_->GetTransactionManager()->Abort(exec_ctx_->GetTransaction());
       exec_ctx_->GetTransaction()->SetTainted();
       throw ExecutionException("write-write conflict");
     }

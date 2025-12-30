@@ -67,6 +67,9 @@ auto IndexScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
         *rid = res_rid;
 
         if (plan_->filter_predicate_ != nullptr) {  // 若filter存在，则检验
+          /** proj4-在txn存储filter */
+          exec_ctx_->GetTransaction()->AppendScanPredicate(table_info_->oid_, plan_->filter_predicate_);
+
           Value value = plan_->filter_predicate_->Evaluate(tuple, GetOutputSchema());
           if (value.CompareEquals(Value(TypeId::BOOLEAN, 1)) == CmpBool::CmpTrue) {
             // 若能通过fliter则返回true
