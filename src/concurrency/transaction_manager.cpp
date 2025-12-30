@@ -69,6 +69,18 @@ auto TransactionManager::VerifyTxn(Transaction *txn) -> bool {
     const auto &table_info = catalog_->GetTable(table_oid);
     for (const auto &rid : rids) {
       auto [tuple_meta, tuple, undo_link] = GetTupleAndUndoLink(this, table_info->table_.get(), rid);
+
+      // 若tuple_heap里存的tuple已被提交且在txn->read_ts之后，则进行检验
+      if (tuple_meta.ts_ < TXN_START_ID && tuple_meta.ts_ > txn->GetReadTs()) {
+        // 只要满足scan_predicate，就视为检验失败，返回false
+        for (const auto &filter : txn->scan_predicates_[table_oid]) {
+          if (filter->Evaluate(&tuple, table_info->schema_).CompareEquals(Value(TypeId::BOOLEAN, 1)) ==
+              CmpBool::CmpTrue) {
+            return false;
+          }
+        }
+      }
+
       const auto &undo_logs = CollectUndoLogs(rid, tuple_meta, tuple, undo_link, txn, this);
       // 若undo_logs为null，则无需遍历
       if (!undo_logs.has_value()) {
@@ -77,14 +89,6 @@ auto TransactionManager::VerifyTxn(Transaction *txn) -> bool {
 
       // 遍历每一个read_ts之后的版本，进行判断
       for (const auto &undo_log : undo_logs.value()) {
-        // 对于每个版本(包括table_heap里的版本)，只要满足scan_predicate，就视为检验失败，返回false
-        for (const auto &filter : txn->scan_predicates_[table_oid]) {
-          if (filter->Evaluate(&tuple, table_info->schema_).CompareEquals(Value(TypeId::BOOLEAN, 1)) ==
-              CmpBool::CmpTrue) {
-            return false;
-          }
-        }
-
         //由于undo_logs最后一个一定是小于等于read_ts的log，故无需遍历
         if (undo_log.ts_ <= txn->GetReadTs()) {
           break;
@@ -97,6 +101,14 @@ auto TransactionManager::VerifyTxn(Transaction *txn) -> bool {
           tuple = GenerateNullTupleForSchema(&table_info->schema_);
         } else {
           tuple = tem_tuple.value();
+        }
+
+        // 对于每个版本，只要满足scan_predicate，就视为检验失败，返回false
+        for (const auto &filter : txn->scan_predicates_[table_oid]) {
+          if (filter->Evaluate(&tuple, table_info->schema_).CompareEquals(Value(TypeId::BOOLEAN, 1)) ==
+              CmpBool::CmpTrue) {
+            return false;
+          }
         }
       }
     }
@@ -169,9 +181,10 @@ void TransactionManager::Abort(Transaction *txn) {
         const auto &new_tuple =
             ReconstructTuple(&table_info->schema_, tuple, tuple_meta, std::vector<UndoLog>{undo_log});
         // 插入回溯结果
-        UpdateTupleAndUndoLink(this, rid, undo_log.prev_version_, table_info->table_.get(), txn,
-                               TupleMeta{undo_log.ts_, undo_log.is_deleted_},
-                               new_tuple.has_value() ? new_tuple.value() : Tuple());
+        UpdateTupleAndUndoLink(
+            this, rid, undo_log.prev_version_, table_info->table_.get(), txn,
+            TupleMeta{undo_log.ts_, undo_log.is_deleted_},
+            new_tuple.has_value() ? new_tuple.value() : GenerateNullTupleForSchema(&table_info->schema_));
       }
     }
   }
