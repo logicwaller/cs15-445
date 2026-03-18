@@ -5,7 +5,7 @@ namespace bustub {
 template <typename KeyType>
 HyperLogLog<KeyType>::HyperLogLog(int16_t n_bits) : cardinality_(0) {
   b_ = std::max(static_cast<int16_t>(0), n_bits);  // n_bits小于0时b_仍为0
-  registers_.resize(std::pow(2, b_), 0);           // 初始化registers有2^b大小
+  registers_.resize(1 << b_, 0);                   // 初始化registers有2^b大小
 }
 
 template <typename KeyType>

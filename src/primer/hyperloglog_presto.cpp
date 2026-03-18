@@ -5,7 +5,7 @@ namespace bustub {
 template <typename KeyType>
 HyperLogLogPresto<KeyType>::HyperLogLogPresto(int16_t n_leading_bits) : cardinality_(0) {
   b_ = std::max(static_cast<int16_t>(0), n_leading_bits);
-  dense_bucket_.resize(std::pow(2, b_), std::bitset<DENSE_BUCKET_SIZE>(0));
+  dense_bucket_.resize(1 << b_, std::bitset<DENSE_BUCKET_SIZE>(0));
 }
 
 template <typename KeyType>
